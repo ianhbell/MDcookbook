@@ -1,4 +1,4 @@
-Install the driver for nvidia directly from Ubuntu 18.04
+Install the driver for nvidia directly from Ubuntu 18.04 (https://linuxconfig.org/how-to-install-the-nvidia-drivers-on-ubuntu-18-04-bionic-beaver-linux)
 ```
 ubuntu-drivers devices
 sudo ubuntu-drivers autoinstall
@@ -31,7 +31,7 @@ Wed Sep 25 10:14:25 2019
 
 ```
 
-Add the runtime to docker
+Add the runtime to docker (https://github.com/nvidia/nvidia-container-runtime#systemd-drop-in-file)
 ``` 
 sudo mkdir -p /etc/systemd/system/docker.service.d
 sudo tee /etc/systemd/system/docker.service.d/override.conf <<EOF
