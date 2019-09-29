@@ -1,8 +1,8 @@
 ## Use "docker-compose up --build" to build and run
 
-FROM xubuntu:18.04
+FROM nvidia/cuda:10.1-devel # 18.04 ubuntu + CUDA stuff
 
-RUN apt-get -y -m update && apt-get install -y cmake python3-numpy g++ gfortran git zip openmpi libopenmpi-dev
+RUN apt-get -y -m update && apt-get install -y cmake python3-numpy g++ gfortran git zip libopenmpi-dev
 
 # This ADD block forces a build (invalidates the cache) if the git repo contents have changed, otherwise leaves it untouched.
 # See https://stackoverflow.com/a/39278224
