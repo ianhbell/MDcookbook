@@ -1,8 +1,9 @@
-## Use "docker-compose up --build" to build and run
+## Use "docker build -t lampvis ." to build and run
 
-FROM nvidia/cuda:10.1-devel # 18.04 ubuntu + CUDA stuff
+# 18.04 ubuntu + CUDA stuff for ultimate use with GPU acceleration
+FROM nvidia/cuda:10.1-devel 
 
-RUN apt-get -y -m update && apt-get install -y cmake python3-numpy g++ gfortran git zip libopenmpi-dev
+RUN apt-get -y -m update && apt-get install -y cmake python3-numpy g++ gfortran git zip libopenmpi-dev nano
 
 # This ADD block forces a build (invalidates the cache) if the git repo contents have changed, otherwise leaves it untouched.
 # See https://stackoverflow.com/a/39278224
@@ -17,9 +18,10 @@ WORKDIR /lammps/src
 RUN make package-update && \
     make yes-user-misc && \
     make yes-opt && \
-    make yes-gpu && \
     make -j8 mpi
 
+#    make yes-gpu && \
+
 # The task to run
-WORKDIR /lammps/src/examples/VISCOSITY
+WORKDIR /lammps/examples/VISCOSITY
 CMD for fname in in.*.2d: do mpirun -np 12 --allow-run-as-root lmp_mpi -sf opt -in $fname done

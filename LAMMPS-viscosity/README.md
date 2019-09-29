@@ -8,5 +8,5 @@ docker run --gpus all lampvis
 ```
 Debugging
 ```
-docker run -it --gpus all lampvis bash
+docker run -it --gpus all -t lampvis bash
 ```
