@@ -24,4 +24,4 @@ RUN make package-update && \
 
 # The task to run
 WORKDIR /lammps/examples/VISCOSITY
-CMD for fname in in.*.2d: do mpirun -np 12 --allow-run-as-root lmp_mpi -sf opt -in $fname done
+CMD for fname in in.*.2d; do mpirun -np 12 --allow-run-as-root lmp_mpi -sf opt -in $fname; done
