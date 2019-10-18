@@ -26,5 +26,5 @@ RUN make package-update && \
 COPY Ar_GK.3d /
 
 # The task to run
-WORKDIR /lammps/examples/VISCOSITY
+WORKDIR /
 CMD for fname in *.3d; do mpirun -np 12 --allow-run-as-root lmp_mpi -sf opt -in $fname; done
