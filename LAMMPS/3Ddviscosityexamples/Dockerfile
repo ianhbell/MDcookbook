@@ -22,6 +22,9 @@ RUN make package-update && \
 
 #    make yes-gpu && \
 
+# Copy over the script
+COPY Ar_GK.3d /
+
 # The task to run
 WORKDIR /lammps/examples/VISCOSITY
-CMD for fname in in.*.3d; do mpirun -np 12 --allow-run-as-root lmp_mpi -sf opt -in $fname; done
+CMD for fname in *.3d; do mpirun -np 12 --allow-run-as-root lmp_mpi -sf opt -in $fname; done
