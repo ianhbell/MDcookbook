@@ -1,4 +1,4 @@
-## Use "docker build -t lampvis ." to build and run
+## Use "docker build -t lampvis ." to build and "docker run -it -t lampvis" to run
 
 # 18.04 ubuntu + CUDA stuff for ultimate use with GPU acceleration
 FROM nvidia/cuda:10.1-devel 
