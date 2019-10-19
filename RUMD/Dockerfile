@@ -16,5 +16,6 @@ RUN wget http://rumd.org/downloads/rumd_3.4.tar.xz && \
 #&&   make test
 
 # Add necessary paths
+ENV PATH="/rumd-3.4/Tools:${PATH}"
 ENV PYTHONPATH="/rumd-3.4/lib:${PYTHONPATH}"
 ENV LD_LIBRARY_PATH="/rumd-3.4/lib:${LD_LIBRARY_PATH}"
