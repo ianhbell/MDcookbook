@@ -5,17 +5,17 @@
 #
 # These images don't work: ubuntu:18.04 ; nvidia/cuda:10.1-devel ; debian:buster
 
-# 18.04 ubuntu + CUDA stuff for ultimate use with GPU acceleration
-# (but for some reason this base image causes trouble with LAMMPS)
-# FROM nvidia/cuda:10.1-devel
-
-FROM debian:stretch
+# CentOS 7 + CUDA stuff for ultimate use with GPU acceleration
+FROM nvidia/cuda:10.1-devel-centos7
 MAINTAINER Ian Bell "ian.bell@nist.gov"
 
-RUN apt-get update && \
-    apt-get install -y wget build-essential ssh zlib1g-dev\
-                       libfftw3-dev libopenblas-dev libopenmpi-dev git nano && \
-    rm -rf /var/lib/apt/lists/*
+RUN yum -y update && \
+    yum -y install  wget ssh zlib-devel \
+                    make gcc gcc-c++ \
+                    openmpi-devel openblas-devel fftw3-devel git nano && \
+    yum -y clean all
+
+ENV PATH="${PATH}:/usr/lib64/openmpi/bin/"
 
 # ARG PACKAGES="asphere body class2 colloid compress coreshell dipole granular kspace manybody mc misc molecule opt peri qeq replica rigid shock snap srd user-reaxc"
 ARG PACKAGES="opt"
