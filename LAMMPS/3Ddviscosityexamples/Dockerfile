@@ -1,27 +1,43 @@
-## Use "docker build -t lampvis ." to build and "docker run -it -t lampvis" to run
+# Largely based on https://gitlab.com/costrouc/public-docker/blob/master/lammps/Dockerfile.debian 
+# but uses a different debian-based base image.
+# 
+# Use "docker build -t lampvis ." to build and "docker run -it -t lampvis" to run
+#
+# These images don't work: ubuntu:18.04 ; nvidia/cuda:10.1-devel ; debian:buster
 
 # 18.04 ubuntu + CUDA stuff for ultimate use with GPU acceleration
-FROM nvidia/cuda:10.1-devel 
-#FROM costrouc/lammps:patch_11May2018-debian-mpi-all
+# (but for some reason this base image causes trouble with LAMMPS)
+# FROM nvidia/cuda:10.1-devel
 
-RUN apt-get -y -m update && apt-get install -y cmake python3-numpy g++ gfortran git zip libopenmpi-dev nano
-#RUN apt-get -y -m update && apt-get install -y nano
+FROM debian:stretch
+MAINTAINER Ian Bell "ian.bell@nist.gov"
+
+RUN apt-get update && \
+    apt-get install -y wget build-essential ssh zlib1g-dev\
+                       libfftw3-dev libopenblas-dev libopenmpi-dev git nano && \
+    rm -rf /var/lib/apt/lists/*
+
+# ARG PACKAGES="asphere body class2 colloid compress coreshell dipole granular kspace manybody mc misc molecule opt peri qeq replica rigid shock snap srd user-reaxc"
+ARG PACKAGES="opt"
+ARG BUILD="mpi"
+ARG LMP_INCLUDES="-DLAMMPS_EXCEPTIONS -DLAMMPS_GZIP -DLAMMPS_MEMALIGN=64"
 
 # This ADD block forces a build (invalidates the cache) if the git repo contents have changed, otherwise leaves it untouched.
 # See https://stackoverflow.com/a/39278224
 ADD https://api.github.com/repos/lammps/lammps/git/refs/heads/master examples-version.json
-RUN git clone --recursive https://github.com/lammps/lammps.git && git checkout stable
-
-# Add necessary paths
-ENV PATH="/lammps/src:/usr/lib64/openmpi/bin:${PATH}"
+RUN git clone --recursive https://github.com/lammps/lammps.git && cd lammps && git checkout stable
 
 # Build the LAMMPS executable
 WORKDIR /lammps/src
-RUN make package-update && \
-   make yes-user-misc && \
-   make yes-opt && \
-   make -j8 mpi
-   # make yes-gpu && \
+RUN for pack in $PACKAGES; do make "yes-$pack"; done && \
+   make mode=lib $BUILD -j12 LMP_INC="$LMP_INCLUDES" && \
+   make mode=shlib $BUILD -j12 LMP_INC="$LMP_INCLUDES" && \
+   make $BUILD && \
+   cp lmp_$BUILD /usr/local/bin/lammps && \
+   cp liblammps_$BUILD.so /usr/local/lib/liblammps.so && \
+   cp liblammps_$BUILD.a /usr/local/lib/liblammps.a && \
+   mkdir /usr/local/include/lammps && \
+   cp *.h /usr/local/include/lammps
 
 # Copy over the script
 COPY Ar_GK.3d /
