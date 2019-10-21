@@ -1,3 +1,11 @@
+"""
+Carries out a calculation for the shear viscosity near
+the triple point for Lennard-Jones fluid with RUMD
+with the use of the Green-Kubo approach 
+
+The value according to Meier et al. (doi:10.1063/1.1770695) at T^*=0.722, rho^*=0.8442 
+should be circa \eta^*=3.258.
+"""
 from __future__ import print_function, division
 
 import subprocess
@@ -12,20 +20,15 @@ import rumd.Tools
 import numpy as np
 import pandas
 
-BlockSize = 131072
-NoBlocks = 100
-
 # Generate the starting state
 subprocess.check_call('rumd_init_conf --num_par=1000 --cells=10,10,10 --rho=0.8442', shell=True)
 
 # create simulation object
 sim = Simulation("start.xyz.gz")
-
-sim.SetBlockSize(BlockSize)
 sim.SetOutputScheduling("trajectory", "logarithmic")
-sim.SetOutputScheduling("energies", "linear", interval=2048)
+sim.SetOutputScheduling("energies", "linear", interval=1024)
 
-sim.SetOutputMetaData("energies",stress_xy=True,stress_xz=True,stress_yz=True)
+sim.SetOutputMetaData("energies",stress_xy=True,stress_xz=True,stress_yz=True,kineticEnergy=False,potentialEnergy=False,temperature=False,totalEnergy=False,virial=False,pressure=False)
 
 # create potential object.
 pot = Pot_LJ_12_6(cutoff_method=ShiftedPotential)
@@ -40,10 +43,10 @@ sim.SetIntegrator(itg)
 at = Autotune()
 at.Tune(sim)
 
-# Equilibration for approximately 300k steps
-sim.Run(int(300000//BlockSize)*BlockSize, suppressAllOutput=True)
-# Production
-sim.Run(BlockSize*NoBlocks)
+# Equilibration for 600k steps
+sim.Run(300000, suppressAllOutput=True)
+# Production for 20 million steps
+sim.Run(20*10**6)
 
 # End of run.
 sim.sample.WriteConf("end.xyz.gz")
