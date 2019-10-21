@@ -1,7 +1,7 @@
 """
 Carries out a calculation for the shear viscosity at 
 the triple point for Lennard-Jones fluid with RUMD
-with the use of the SLLOD 
+with the use of the SLLOD method
 
 The value according to Meier et al. (doi:10.1063/1.1770695) at T^*=0.722, rho^*=0.8442 
 should be circa \eta^*=3.258.
