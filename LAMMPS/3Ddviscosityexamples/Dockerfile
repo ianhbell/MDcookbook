@@ -1,5 +1,5 @@
 # Largely based on https://gitlab.com/costrouc/public-docker/blob/master/lammps/Dockerfile.debian 
-# but uses a different debian-based base image.
+# but uses a different CentOS-based base image.
 # 
 # Use "docker build -t lampvis ." to build and "docker run -it -t lampvis" to run
 #
