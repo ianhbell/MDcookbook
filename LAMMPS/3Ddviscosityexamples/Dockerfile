@@ -24,7 +24,7 @@ ARG LMP_INCLUDES="-DLAMMPS_EXCEPTIONS -DLAMMPS_GZIP -DLAMMPS_MEMALIGN=64"
 
 # This ADD block forces a build (invalidates the cache) if the git repo contents have changed, otherwise leaves it untouched.
 # See https://stackoverflow.com/a/39278224
-ADD https://api.github.com/repos/lammps/lammps/git/refs/heads/master examples-version.json
+ADD https://api.github.com/repos/lammps/lammps/git/refs/heads/stable stable-meta.json
 RUN git clone --recursive https://github.com/lammps/lammps.git && cd lammps && git checkout stable
 
 # Build the LAMMPS executable
