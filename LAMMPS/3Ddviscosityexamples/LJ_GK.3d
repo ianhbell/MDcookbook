@@ -1,0 +1,59 @@
+# Sample LAMMPS input script for viscosity of Lennard-Jones fluid near
+# its triple point
+
+units       lj
+variable    Tstar equal 0.722
+variable    rhostar equal 0.8442      # rho^* = sigma^3*N/V, here sigma=1
+variable    Nparticle equal 1200
+variable    V equal ${Nparticle}/${rhostar}
+variable    Lbox equal ${V}^(1.0/3.0)
+variable    dt equal 0.0025
+variable    p equal 400     # correlation length
+variable    s equal 5       # sample interval
+variable    d equal $p*$s   # dump interval
+
+# Setup problem
+dimension    3
+boundary     p p p
+lattice      fcc ${rhostar} orient x 1 0 0 orient y 0 1 0 orient z 0 0 1
+region       box block 0 ${Lbox} 0 ${Lbox} 0 ${Lbox}
+create_box   1 box
+create_atoms 1 box
+mass         1 1.0
+pair_style   lj/cut 2.5 # 2.5*sigma truncation of potential
+pair_coeff   * * 1 1
+timestep     ${dt}
+thermo       $d
+
+# Optional to store information about the initial configuration
+write_data initial.data
+
+# A bit of energy minimization to move the atoms to more energetically favorable locations
+# E.g.: https://github.com/dwsideriusNIST/LAMMPS_Examples/blob/master/run_scripts/LJ.NVT.generaterestart
+minimize 1.0e-4 1.0e-6 100 1000
+
+# equilibration and thermalization (102486 is the RNG seed)
+velocity     all create ${Tstar} 102486 mom yes rot yes dist gaussian 
+fix          NVT all nvt temp ${Tstar} ${Tstar} 0.01 drag 0.2
+run          8000
+
+# viscosity calculation, switch to NVE if desired
+#unfix       NVT
+#fix         NVE all nve
+
+reset_timestep 0
+variable     pxy equal pxy
+variable     pxz equal pxz
+variable     pyz equal pyz
+fix          SS all ave/correlate $s $p $d &
+             v_pxy v_pxz v_pyz type auto file S0St.dat ave running
+variable     scale equal $V/${Tstar}*$s*${dt}
+variable     v11 equal trap(f_SS[3])*${scale}
+variable     v22 equal trap(f_SS[4])*${scale}
+variable     v33 equal trap(f_SS[5])*${scale}
+thermo_style custom step temp press v_pxy v_pxz v_pyz v_v11 v_v22 v_v33
+run          100000
+variable     etastar equal (v_v11+v_v22+v_v33)/3.0
+variable     ndens equal count(all)/vol
+print        "ndens: ${ndens}"
+print        "average viscosity eta^*: ${etastar}  @ T^*: ${Tstar}, rho^*: ${rhostar}"
