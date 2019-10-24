@@ -2,6 +2,8 @@
 # its triple point
 
 units       lj
+atom_style  atomic                                  #Atom Style: Atoms
+
 variable    Tstar equal 0.722
 variable    rhostar equal 0.8442      # rho^* = sigma^3*N/V, here sigma=1
 variable    Nparticle equal 1200
@@ -11,7 +13,7 @@ variable    dt equal 0.0025
 variable    p equal 400     # correlation length
 variable    s equal 5       # sample interval
 variable    d equal $p*$s   # dump interval
-variable    cfgseed 178534267045  # random seed for position 
+variable    cfgseed equal 178534267045  # random seed for position 
 
 # Setup problem
 dimension    3
