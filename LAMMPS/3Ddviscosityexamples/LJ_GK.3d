@@ -11,14 +11,14 @@ variable    dt equal 0.0025
 variable    p equal 400     # correlation length
 variable    s equal 5       # sample interval
 variable    d equal $p*$s   # dump interval
+variable    cfgseed 178534267045  # random seed for position 
 
 # Setup problem
 dimension    3
 boundary     p p p
-lattice      fcc ${rhostar} orient x 1 0 0 orient y 0 1 0 orient z 0 0 1
 region       box block 0 ${Lbox} 0 ${Lbox} 0 ${Lbox}
 create_box   1 box
-create_atoms 1 box
+create_atoms 1 random ${Nparticle} ${cfg_seed} NULL
 mass         1 1.0
 pair_style   lj/cut 2.5 # 2.5*sigma truncation of potential
 pair_coeff   * * 1 1
