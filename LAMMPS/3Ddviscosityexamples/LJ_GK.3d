@@ -20,7 +20,7 @@ dimension    3
 boundary     p p p
 region       box block 0 ${Lbox} 0 ${Lbox} 0 ${Lbox}
 create_box   1 box
-create_atoms 1 random ${Nparticle} ${cfg_seed} NULL
+create_atoms 1 random ${Nparticle} ${cfgseed} NULL
 mass         1 1.0
 pair_style   lj/cut 2.5 # 2.5*sigma truncation of potential
 pair_coeff   * * 1 1
