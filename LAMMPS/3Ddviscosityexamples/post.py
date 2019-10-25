@@ -1,4 +1,4 @@
-import pandas, io, numpy as np, matplotlib.pyplot as plt, scipy.integrate
+import pandas, io, numpy as np, matplotlib.pyplot as plt, scipy.integrate, scipy.signal
 
 def ACF_FFT(v, Norigins):
     """ 
@@ -62,23 +62,32 @@ def calc_avg_autocorr(data):
 def GreenKubo(df, V):    
     Tstar = np.mean(df['v_Temp'])
     ys = 0
+    dump_interval = 10 # number of real time steps between dumps
     for key in ['v_pxy', 'v_pxz', 'v_pyz']:
-        ACF = ACF_FFT(np.array(df[key]), Norigins = 100)
-        y = scipy.integrate.cumtrapz(ACF, initial=0)*V/Tstar*0.0025*10
+        ACF = ACF_FFT(np.array(df[key]), Norigins = len(df)-2)
+        y = scipy.integrate.cumtrapz(ACF, initial=0)*V/Tstar*0.0025*dump_interval
         ys += y
         plt.plot(y, lw=0.4)
-    print('eta^*:', ys[-1]/3)
+    # The autocorrelation function depends on the number of time origin points taken, 
+    # but the time origin curves are coincident, and overlap perfectly, so the first local
+    # maximum of the SACF is the value to consider when using N-2 time origins
+    i1stmaxima = scipy.signal.argrelmax(ys)[0][0]
+    print('G-K eta^*:', ys[i1stmaxima]/3)
+    plt.plot(i1stmaxima, ys[i1stmaxima]/3, 'd')
     plt.plot(ys/3, lw = 3)
+    plt.xlabel('ACF time points')
+    plt.ylabel(r'$\int_0^{t^*} \left\langle \tau_{\alpha\beta}(0)\tau_{\alpha\beta}(x) \right\rangle {\rm d} x$')
+    plt.savefig('GreenKubo.pdf')
     plt.show()
 
-def Einstein(df):
+def Einstein(df, V):
     Tstar = np.mean(df['v_Temp'])
     sumy = 0
-    for key in ['v_pxy','v_pxz', 'v_pyz']:
-        integrated = scipy.integrate.cumtrapz(np.array(df[key]), df['time'], initial=0)
-        ACF_ab = ACF_FFT(integrated**2, Norigins = 1000)
-        y = ACF_ab*V/Tstar/2*0.0025
-        # plt.plot(y, lw=0.75)
+    for key in ['v_pxy']:
+        integrated = scipy.integrate.cumtrapz(y=np.array(df[key]), x=df['time'], initial=0)
+        ACF_ab = ACF_FFT(integrated**2, Norigins = 100)
+        y = ACF_ab*V/(2*Tstar)*0.0025
+        # plt.plot(integrated**2, lw=0.75)
         sumy += y
     plt.plot(sumy/3, lw = 3)
     plt.show()
@@ -87,4 +96,4 @@ if __name__ == '__main__':
     df = load_dump('out.stressdump')
     V = 1200/0.8442 # LJ units
     GreenKubo(df, V)
-    Einstein(df, V)
+    # Einstein(df, V)
