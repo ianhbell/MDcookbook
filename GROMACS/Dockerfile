@@ -15,10 +15,20 @@ RUN yum -y update && \
                     openmpi-devel openblas-devel fftw3-devel git nano && \
     yum -y clean all
 
-ENV PATH="${PATH}:/usr/lib64/openmpi/bin/"
+# Build and install cmake 3.x
+RUN wget https://cmake.org/files/v3.12/cmake-3.12.3.tar.gz && \
+    tar zxvf cmake-3.* && \
+    cd cmake-3.* && \
+    ./bootstrap --prefix=/usr/local && \
+    make -j$(nproc) && \
+    make install
 
-# Build the LAMMPS executable
-WORKDIR /lammps/src
+RUN cmake --version
+
+#ENV PATH="${PATH}:/usr/lib64/openmpi/bin/"
+
+## Build the GROMACS executable
+WORKDIR /
 # See http://manual.gromacs.org/documentation/2019/install-guide/index.html
 RUN wget http://ftp.gromacs.org/pub/gromacs/gromacs-2019.tar.gz && \
   tar xfz gromacs-2019.tar.gz && \
@@ -28,10 +38,8 @@ RUN wget http://ftp.gromacs.org/pub/gromacs/gromacs-2019.tar.gz && \
   cmake .. -DGMX_BUILD_OWN_FFTW=ON -DREGRESSIONTEST_DOWNLOAD=ON && \
   make && \
   make check && \
-  sudo make install && \
+  make install && \
   source /usr/local/gromacs/bin/GMXRC
-
-
 
 # The task to run
 #WORKDIR /
