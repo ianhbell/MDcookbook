@@ -13,6 +13,7 @@ variable    dt equal 0.0025
 variable    p equal 400     # correlation length
 variable    s equal 5       # sample interval
 variable    d equal $p*$s   # dump interval
+variable    dumpfreq equal 2   # dump interval for stress info
 variable    cfgseed equal 17853  # random seed for position initialization
 
 # Setup problem
@@ -54,14 +55,22 @@ variable     pyz equal pyz
 variable     Temp equal temp
 variable     Press equal press
 
-fix          SS all ave/correlate $s $p $d v_pxy v_pxz v_pyz type auto file S0St.dat ave running
-fix          OUTPUT all ave/time $s $p $d v_Temp v_pxy v_pxz v_pyz file out.stressdump
+variable     Nevery equal 1 # Interval between samples in a block (timesteps)
+variable     Nrepeat equal 10 # Samples per block output
+variable     Nfreq equal ${Nevery}*${Nrepeat} # Overall output interval (timesteps)
 
+fix          SS all ave/correlate $s $p $d v_pxy v_pxz v_pyz type auto file S0St.dat ave running
 variable     v11 equal trap(f_SS[3])*${scale}
 variable     v22 equal trap(f_SS[4])*${scale}
 variable     v33 equal trap(f_SS[5])*${scale}
-thermo_style custom step temp press v_pxz v_pyz v_v11 v_v22 v_v33
+variable     vavg equal (v_v11+v_v22+v_v33)/3.0
+fix          OUTPUT all ave/time ${Nevery} ${Nrepeat} ${Nfreq} v_Temp v_pxy v_pxz v_pyz file out.stressdump
+
+# Also store and print the sum of the running autocorrelation function
+thermo_style custom step temp press v_pxz v_pyz v_v11 v_v22 v_v33 v_vavg
 thermo       $d
+
+#fix          OUTPUTacf all ave/time ${Nevery} ${Nrepeat} ${Nfreq} v_v11 v_v22 v_v33 file out.ACFstressdump
 
 run          1000000
 variable     etastar equal (v_v11+v_v22+v_v33)/3.0
