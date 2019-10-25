@@ -10,8 +10,8 @@ variable    Nparticle equal 1200
 variable    V equal ${Nparticle}/${rhostar}
 variable    Lbox equal ${V}^(1.0/3.0)
 variable    dt equal 0.0025
-variable    p equal 400     # correlation length
 variable    s equal 5       # sample interval
+variable    p equal 400     # correlation length
 variable    d equal $p*$s   # dump interval
 variable    dumpfreq equal 2   # dump interval for stress info
 variable    cfgseed equal 17853  # random seed for position initialization
@@ -70,7 +70,6 @@ fix          OUTPUT all ave/time ${Nevery} ${Nrepeat} ${Nfreq} v_Temp v_pxy v_px
 thermo_style custom step temp press v_pxz v_pyz v_v11 v_v22 v_v33 v_vavg
 thermo       $d
 
-#fix          OUTPUTacf all ave/time ${Nevery} ${Nrepeat} ${Nfreq} v_v11 v_v22 v_v33 file out.ACFstressdump
 
 run          1000000
 variable     etastar equal (v_v11+v_v22+v_v33)/3.0
