@@ -59,8 +59,7 @@ def calc_avg_autocorr(data):
 
     return ACF
 
-def GreenKubo(df):
-    V = 1200/0.8442 # LJ units
+def GreenKubo(df, V):    
     Tstar = np.mean(df['v_Temp'])
     ys = 0
     for key in ['v_pxy', 'v_pxz', 'v_pyz']:
@@ -73,7 +72,6 @@ def GreenKubo(df):
     plt.show()
 
 def Einstein(df):
-    V = 1200/0.8442 # LJ units
     Tstar = np.mean(df['v_Temp'])
     sumy = 0
     for key in ['v_pxy','v_pxz', 'v_pyz']:
@@ -87,5 +85,6 @@ def Einstein(df):
 
 if __name__ == '__main__':
     df = load_dump('out.stressdump')
-    GreenKubo(df)
-    Einstein(df)
+    V = 1200/0.8442 # LJ units
+    GreenKubo(df, V)
+    Einstein(df, V)
