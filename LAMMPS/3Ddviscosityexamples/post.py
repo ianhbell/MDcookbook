@@ -59,7 +59,7 @@ def calc_avg_autocorr(data):
 
     return ACF
 
-def GreenKubo(df, V):    
+def GreenKubo(df, V):
     Tstar = np.mean(df['v_Temp'])
     ys = 0
     dump_interval = 10 # number of real time steps between dumps
