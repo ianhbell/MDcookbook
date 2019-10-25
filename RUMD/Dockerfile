@@ -13,7 +13,7 @@ RUN wget http://rumd.org/downloads/rumd_3.4.tar.xz && \
     sed -i 's/61/75/g' Makefile && \
     make && \
     python setup.py install && \
-    pip install pandas
+    pip install pandas matplotlib scipy
 
 # Add necessary paths
 ENV PATH="/rumd-3.4/Tools:${PATH}"
