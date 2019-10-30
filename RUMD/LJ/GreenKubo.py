@@ -5,6 +5,10 @@ with the use of the Green-Kubo approach
 
 The value according to Meier et al. (doi:10.1063/1.1770695) 
 at T^*=0.722, rho^*=0.8442 should be circa \eta^*=3.258.
+
+For self diffusion at the same state point, the value should be
+circa D^*=0.0325 (doi: 10.1063/1.1786579) for 1372 particles, but
+this is not nearly enough to capture the infinite size limit
 """
 from __future__ import print_function, division
 
@@ -87,21 +91,53 @@ def post_process():
 
     f_autocorrelation = ACF_FFT
 
-    # Create AnalyzeEnergies object, read relevant columns from energy files
-    nrgs = analyze.AnalyzeEnergies()
-    nrgs.read_energies(['sxy', 'syz', 'sxz'])
-    sxy = nrgs.energies['sxy']
-    time = nrgs.metadata['interval']*np.arange(len(sxy)) # "Real" time associated with each store
+    def shear_viscosity_GreenKubo():
 
-    # Green-Kubo analysis
-    SACF = sum([f_autocorrelation(nrgs.energies[k], Norigins=len(sxy)-2) for k in ['sxy', 'syz', 'sxz']])/3.0
-    time_ACF = nrgs.metadata['interval']*np.arange(0, len(SACF)) # interval is total time between dumps
-    int_SACF = V/Tstar*scipy.integrate.cumtrapz(SACF, time_ACF, initial=0)
-    # The autocorrelation function depends on the number of time origin points taken, 
-    # but the time origin curves are coincident, and overlap perfectly, so the first local
-    # maximum of the SACF is the value to consider when using N-2 time origins
-    i1stmaxima = scipy.signal.argrelmax(int_SACF)[0][0]
-    print('G-K eta^*:', int_SACF[i1stmaxima])
+        # Create AnalyzeEnergies object, read relevant columns from energy files
+        nrgs = analyze.AnalyzeEnergies()
+        nrgs.read_energies(['sxy', 'syz', 'sxz'])
+        sxy = nrgs.energies['sxy']
+        time = nrgs.metadata['interval']*np.arange(len(sxy)) # "Real" time associated with each store
+
+        # Green-Kubo analysis
+        SACF = sum([f_autocorrelation(nrgs.energies[k], Norigins=len(sxy)-2) for k in ['sxy', 'syz', 'sxz']])/3.0
+        time_ACF = nrgs.metadata['interval']*np.arange(0, len(SACF)) # interval is total time between dumps
+        int_SACF = V/Tstar*scipy.integrate.cumtrapz(SACF, time_ACF, initial=0)
+        # The autocorrelation function depends on the number of time origin points taken, 
+        # but the time origin curves are coincident, and overlap perfectly, so the first local
+        # maximum of the SACF is the value to consider when using N-2 time origins
+        i1stmaxima = scipy.signal.argrelmax(int_SACF)[0][0]
+        print('G-K eta^*:', int_SACF[i1stmaxima])
+    shear_viscosity_GreenKubo()
+
+    def self_diffusion_Einstein():
+
+        rdf_obj = rumd.Tools.rumd_rdf()
+        # Constructor arguments: number of bins and minimum time
+        rdf_obj.ComputeAll(1000, 1.0)
+        # Include the state point information in the rdf file name
+        rdf_obj.WriteRDF("rdf.dat")
+
+        # Run rumd_sq to find qmax for particle type 0 (only one particle type)
+        subprocess.check_call('rumd_sq 0.1 100 1000', shell=True) # args are qmin, qmax, number of bins
+        qmax = float(open('qmax.dat').read())
+
+        # Write MSD data to a file
+        msd_obj = rumd.Tools.rumd_msd()
+        msd_obj.SetQValues([qmax])
+        msd_obj.ComputeAll()
+        msd_obj.WriteMSD("msd.dat")
+
+        df = pandas.read_csv("msd.dat", sep=' ', names=['t*', 'MSD'])
+        plt.plot(df['t*'], df['MSD'], 'o')
+        dfend = df.tail(5)
+        m,b = np.polyfit(dfend['t*'], dfend['MSD'], 1)
+        print('Einsten D*:', m/6)
+        plt.xlabel(r'$t^*$')
+        plt.ylabel(r'MSD / ??')
+        plt.savefig('MSD.pdf')
+        plt.close()
+    self_diffusion_Einstein()
 
     def diagnostic_plots():
 
@@ -145,5 +181,5 @@ def post_process():
     # diagnostic_plots()
 
 if __name__ == '__main__':
-    do_run(rhostar=0.8442, Tstar=0.722)
+#    do_run(rhostar=0.8442, Tstar=0.722)
     post_process()
