@@ -38,7 +38,7 @@ def do_run(Tstar, rhostar):
     sim = Simulation("start.xyz.gz")
     sim.SetOutputScheduling("trajectory", "logarithmic")
     sim.SetOutputScheduling("energies", "linear", interval=1)
-    block_size = 16384*2
+    block_size = 16384//2
     sim.SetBlockSize(block_size)
 
     sim.SetOutputMetaData("energies",

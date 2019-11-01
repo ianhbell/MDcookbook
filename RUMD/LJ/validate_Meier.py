@@ -1,4 +1,4 @@
-import os
+import os, json
 from collections import namedtuple
 EMDPoint = namedtuple('EMDPoint', ['Tstar','rhostar','etastar','Dstar'])
 
