@@ -32,7 +32,7 @@ import scipy.integrate, matplotlib.pyplot as plt, scipy.signal
 def do_run(Tstar, rhostar):
 
     # Generate the starting state
-    subprocess.check_call('rumd_init_conf --num_par=1000 --cells=10,10,10 --rho='+str(rhostar), shell=True)
+    subprocess.check_call('rumd_init_conf --num_par=1331 --cells=11,11,11 --rho='+str(rhostar), shell=True)
 
     # Create simulation object
     sim = Simulation("start.xyz.gz")
@@ -43,12 +43,12 @@ def do_run(Tstar, rhostar):
 
     sim.SetOutputMetaData("energies",
                           stress_xy=True,stress_xz=True,stress_yz=True,
-                          kineticEnergy=False,potentialEnergy=False,temperature=False,
-                          totalEnergy=False,virial=False,pressure=False)
+                          kineticEnergy=False,potentialEnergy=False,temperature=True,
+                          totalEnergy=False,virial=False,pressure=False,volume=True)
 
     # Create potential object.
     pot = Pot_LJ_12_6(cutoff_method=ShiftedPotential)
-    pot.SetParams(i=0, j=0, Sigma=1.00, Epsilon=1.00, Rcut=2.5);
+    pot.SetParams(i=0, j=0, Sigma=1.00, Epsilon=1.00, Rcut=6.5);
     sim.SetPotential(pot)
 
     # Create integrator object
@@ -56,8 +56,8 @@ def do_run(Tstar, rhostar):
     sim.SetIntegrator(itg)
 
     # Equilibration for 300k steps
-    sim.Run(300000, suppressAllOutput=True)
-    # Production 
+    sim.Run(300*10**3, suppressAllOutput=True)
+    # Production
     prod_steps = block_size*400
     print(prod_steps, 'production time steps')
     sim.Run(prod_steps)
@@ -67,7 +67,7 @@ def do_run(Tstar, rhostar):
     sim.sample.TerminateOutputManagers()
 
 def ACF_FFT(v, Norigins):
-    """ 
+    """
     See https://github.com/Allen-Tildesley/examples/blob/master/python_examples/corfun.py
     """
     nstep = len(v)
@@ -86,60 +86,17 @@ def ACF_FFT(v, Norigins):
 
 def post_process():
 
-    V = 1184.55 # LJ units
-    Tstar = 0.722 # LJ units
-
     f_autocorrelation = ACF_FFT
 
-    def shear_viscosity_GreenKubo():
+    def diagnostic_plots():
 
         # Create AnalyzeEnergies object, read relevant columns from energy files
         nrgs = analyze.AnalyzeEnergies()
-        nrgs.read_energies(['sxy', 'syz', 'sxz'])
+        nrgs.read_energies(['sxy', 'syz', 'sxz', 'T', 'V'])
         sxy = nrgs.energies['sxy']
+        Tstar = np.mean(nrgs.energies['T'])
+        V = np.mean(nrgs.energies['V'])
         time = nrgs.metadata['interval']*np.arange(len(sxy)) # "Real" time associated with each store
-
-        # Green-Kubo analysis
-        SACF = sum([f_autocorrelation(nrgs.energies[k], Norigins=len(sxy)-2) for k in ['sxy', 'syz', 'sxz']])/3.0
-        time_ACF = nrgs.metadata['interval']*np.arange(0, len(SACF)) # interval is total time between dumps
-        int_SACF = V/Tstar*scipy.integrate.cumtrapz(SACF, time_ACF, initial=0)
-        # The autocorrelation function depends on the number of time origin points taken, 
-        # but the time origin curves are coincident, and overlap perfectly, so the first local
-        # maximum of the SACF is the value to consider when using N-2 time origins
-        i1stmaxima = scipy.signal.argrelmax(int_SACF)[0][0]
-        print('G-K eta^*:', int_SACF[i1stmaxima])
-    shear_viscosity_GreenKubo()
-
-    def self_diffusion_Einstein():
-
-        rdf_obj = rumd.Tools.rumd_rdf()
-        # Constructor arguments: number of bins and minimum time
-        rdf_obj.ComputeAll(1000, 1.0)
-        # Include the state point information in the rdf file name
-        rdf_obj.WriteRDF("rdf.dat")
-
-        # Run rumd_sq to find qmax for particle type 0 (only one particle type)
-        subprocess.check_call('rumd_sq 0.1 100 1000', shell=True) # args are qmin, qmax, number of bins
-        qmax = float(open('qmax.dat').read())
-
-        # Write MSD data to a file
-        msd_obj = rumd.Tools.rumd_msd()
-        msd_obj.SetQValues([qmax])
-        msd_obj.ComputeAll()
-        msd_obj.WriteMSD("msd.dat")
-
-        df = pandas.read_csv("msd.dat", sep=' ', names=['t*', 'MSD'])
-        plt.plot(df['t*'], df['MSD'], 'o')
-        dfend = df.tail(5)
-        m,b = np.polyfit(dfend['t*'], dfend['MSD'], 1)
-        print('Einsten D*:', m/6)
-        plt.xlabel(r'$t^*$')
-        plt.ylabel(r'MSD / ??')
-        plt.savefig('MSD.pdf')
-        plt.close()
-    self_diffusion_Einstein()
-
-    def diagnostic_plots():
 
         # # Einstein analysis
         # Einstein_integrand = scipy.integrate.cumtrapz(sxy, time, initial=0)**2
@@ -178,8 +135,58 @@ def post_process():
         plt.tight_layout(pad=0.2)
         plt.savefig('GK_runningintegral.pdf')
         plt.close()
-    # diagnostic_plots()
+    #diagnostic_plots()
+
+    def shear_viscosity_GreenKubo():
+
+        # Create AnalyzeEnergies object, read relevant columns from energy files
+        nrgs = analyze.AnalyzeEnergies()
+        nrgs.read_energies(['sxy', 'syz', 'sxz','T', 'V'])
+        sxy = nrgs.energies['sxy']
+        Tstar = np.mean(nrgs.energies['T'])
+        V = np.mean(nrgs.energies['V'])
+        time = nrgs.metadata['interval']*np.arange(len(sxy)) # "Real" time associated with each store
+
+        # Green-Kubo analysis
+        SACF = sum([f_autocorrelation(nrgs.energies[k], Norigins=len(sxy)-2) for k in ['sxy', 'syz', 'sxz']])/3.0
+        time_ACF = nrgs.metadata['interval']*np.arange(0, len(SACF)) # interval is total time between dumps
+        int_SACF = V/Tstar*scipy.integrate.cumtrapz(SACF, time_ACF, initial=0)
+        # The autocorrelation function depends on the number of time origin points taken, 
+        # but the time origin curves are coincident, and overlap perfectly, so the first local
+        # maximum of the SACF is the value to consider when using N-2 time origins
+        i1stmaxima = scipy.signal.argrelmax(int_SACF)[0][0]
+        print('G-K eta^*:', int_SACF[i1stmaxima])
+    shear_viscosity_GreenKubo()
+
+    def self_diffusion_Einstein():
+
+        rdf_obj = rumd.Tools.rumd_rdf()
+        # Constructor arguments: number of bins and minimum time
+        rdf_obj.ComputeAll(1000, 1.0)
+        # Include the state point information in the rdf file name
+        rdf_obj.WriteRDF("rdf.dat")
+
+        # Run rumd_sq to find qmax for particle type 0 (only one particle type)
+        subprocess.check_call('rumd_sq 0.1 100 0.85', shell=True) # args are qmin, qmax, density (not clear what density is)
+        qmax = float(open('qmax.dat').read())
+
+        # Write MSD data to a file
+        msd_obj = rumd.Tools.rumd_msd()
+        msd_obj.SetQValues([qmax])
+        msd_obj.ComputeAll()
+        msd_obj.WriteMSD("msd.dat")
+
+        df = pandas.read_csv("msd.dat", sep=' ', names=['t*', 'MSD'])
+        plt.plot(df['t*'], df['MSD'], 'o')
+        dfend = df.tail(5)
+        m,b = np.polyfit(dfend['t*'], dfend['MSD'], 1)
+        print('Einstein D*:', m/6)
+        plt.xlabel(r'$t^*$')
+        plt.ylabel(r'MSD / ??')
+        plt.savefig('MSD.pdf')
+        plt.close()
+    self_diffusion_Einstein()
 
 if __name__ == '__main__':
-#    do_run(rhostar=0.8442, Tstar=0.722)
+    do_run(Tstar=4.0, rhostar=0.025)
     post_process()
