@@ -156,7 +156,8 @@ def post_process():
         # maximum of the SACF is the value to consider when using N-2 time origins
         i1stmaxima = scipy.signal.argrelmax(int_SACF)[0][0]
         print('G-K eta^*:', int_SACF[i1stmaxima])
-    shear_viscosity_GreenKubo()
+        return int_SACF[i1stmaxima]
+    etastar = shear_viscosity_GreenKubo()
 
     def self_diffusion_Einstein():
 
@@ -185,7 +186,18 @@ def post_process():
         plt.ylabel(r'MSD / ??')
         plt.savefig('MSD.pdf')
         plt.close()
-    self_diffusion_Einstein()
+        return m/6
+    Dstar = self_diffusion_Einstein()
+
+    with open('results.json', 'w') as fp:
+        fp.write(json.dumps(
+            {
+                'T^*': Tstar, 
+                'rho^*': rhostar, 
+                'eta^*':etastar, 
+                'D^*':Dstar
+            }
+        ))
 
 if __name__ == '__main__':
     do_run(Tstar=4.0, rhostar=0.025)
