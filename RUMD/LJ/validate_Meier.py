@@ -1,4 +1,4 @@
-import os, json
+import os, json, shutil
 from collections import namedtuple
 EMDPoint = namedtuple('EMDPoint', ['Tstar','rhostar','etastar','Dstar'])
 
@@ -20,7 +20,7 @@ for pt in pts:
     if os.path.exists(folder):
         newfolder = folder+'.backup'
         print('Moving', folder, 'to', newfolder)
-        os.rename(folder, newfolder)
+        shutil.move(folder, newfolder)
     os.makedirs(folder)
     os.chdir(folder)
     print(os.path.abspath(os.curdir))
