@@ -16,6 +16,7 @@ import timeit
 import subprocess
 import gzip
 import io
+import json
 
 from rumd import *
 from rumd.Simulation import Simulation
