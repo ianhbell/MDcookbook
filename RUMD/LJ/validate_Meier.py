@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import os, json, shutil
 from collections import namedtuple
 EMDPoint = namedtuple('EMDPoint', ['Tstar','rhostar','etastar','Dstar'])
@@ -19,11 +21,13 @@ for pt in pts:
     folder = 'T{0:g}D{1:g}'.format(pt.Tstar, pt.rhostar)
     if os.path.exists(folder):
         newfolder = folder+'.backup'
+        if os.path.exists(newfolder):
+            shutil.rmtree(newfolder)
         print('Moving', folder, 'to', newfolder)
         shutil.move(folder, newfolder)
     os.makedirs(folder)
     os.chdir(folder)
-    print(os.path.abspath(os.curdir))
+    print('Running RUMD from', os.path.abspath(os.curdir))
 
     EMD.do_run(Tstar=pt.Tstar, rhostar=pt.rhostar)
     EMD.post_process()
