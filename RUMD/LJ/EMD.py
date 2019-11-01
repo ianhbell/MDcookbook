@@ -146,6 +146,7 @@ def post_process():
         sxy = nrgs.energies['sxy']
         Tstar = np.mean(nrgs.energies['T'])
         V = np.mean(nrgs.energies['V'])
+        Nparticles = nrgs.metadata['num_part']
         time = nrgs.metadata['interval']*np.arange(len(sxy)) # "Real" time associated with each store
 
         # Green-Kubo analysis
@@ -157,8 +158,9 @@ def post_process():
         # maximum of the SACF is the value to consider when using N-2 time origins
         i1stmaxima = scipy.signal.argrelmax(int_SACF)[0][0]
         print('G-K eta^*:', int_SACF[i1stmaxima])
-        return Tstar, int_SACF[i1stmaxima]
-    Tstar, etastar = shear_viscosity_GreenKubo()
+        rhostar = Nparticles/V
+        return Tstar, rhostar, int_SACF[i1stmaxima]
+    Tstar, rhostar, etastar = shear_viscosity_GreenKubo()
 
     def self_diffusion_Einstein():
 
@@ -193,9 +195,9 @@ def post_process():
     with open('results.json', 'w') as fp:
         fp.write(json.dumps(
             {
-                'T^*': Tstar, 
-                'rho^*': rhostar, 
-                'eta^*':etastar, 
+                'T^*': Tstar,
+                'rho^*': rhostar,
+                'eta^*':etastar,
                 'D^*':Dstar
             }
         ))
