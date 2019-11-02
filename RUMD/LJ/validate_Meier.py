@@ -7,10 +7,10 @@ EMDPoint = namedtuple('EMDPoint', ['Tstar','rhostar','etastar','Dstar'])
 # Points from Meier's publications
 pts = [
     EMDPoint(0.9,0.025,0.09764,5.1107),
-    EMDPoint(4,0.025,0.387,0.47277),
-    EMDPoint(1.5,0.3,0.3275,0.20146),
-    EMDPoint(6.0,0.3,0.6465,0.53799),
-    EMDPoint(0.722,0.8442,3.258,0.325),  # Estimated 
+    EMDPoint(4,0.025,0.387,18.911),
+    EMDPoint(1.5,0.3,0.3275,0.67155),
+    EMDPoint(6.0,0.3,0.6465,1.7933),
+    EMDPoint(0.722,0.8442,3.258,0.0325),  # Estimated 
 ]
 
 import EMD

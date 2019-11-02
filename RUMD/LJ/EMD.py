@@ -56,6 +56,10 @@ def do_run(Tstar, rhostar):
     itg = IntegratorNVT(timeStep=0.0025, targetTemperature=Tstar)
     sim.SetIntegrator(itg)
 
+    # Autotune
+    at = Autotune()
+    at.Tune(sim)
+
     # Equilibration for 300k steps
     sim.Run(300*10**3, suppressAllOutput=True)
     # Production
@@ -203,5 +207,5 @@ def post_process():
         ))
 
 if __name__ == '__main__':
-    do_run(Tstar=4.0, rhostar=0.025)
+    do_run(Tstar=0.722, rhostar=0.8442)
     post_process()
