@@ -54,6 +54,7 @@ variable     pxz equal pxz
 variable     pyz equal pyz
 variable     Temp equal temp
 variable     Press equal press
+variable     Time equal time
 
 variable     Nevery equal 1 # Interval between samples in a block (timesteps)
 variable     Nrepeat equal 10 # Samples per block output
@@ -64,7 +65,7 @@ variable     v11 equal trap(f_SS[3])*${scale}
 variable     v22 equal trap(f_SS[4])*${scale}
 variable     v33 equal trap(f_SS[5])*${scale}
 variable     vavg equal (v_v11+v_v22+v_v33)/3.0
-fix          OUTPUT all ave/time ${Nevery} ${Nrepeat} ${Nfreq} v_Temp v_pxy v_pxz v_pyz file out.stressdump
+fix          OUTPUT all ave/time ${Nevery} ${Nrepeat} ${Nfreq} v_Time v_Temp v_pxy v_pxz v_pyz file out.stressdump
 
 # Also store and print the sum of the running autocorrelation function
 thermo_style custom step temp press v_pxz v_pyz v_v11 v_v22 v_v33 v_vavg
