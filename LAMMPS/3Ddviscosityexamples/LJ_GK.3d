@@ -4,8 +4,8 @@
 units       lj
 atom_style  atomic                                  #Atom Style: Atoms
 
-variable    Tstar equal 0.722
-variable    rhostar equal 0.8442      # rho^* = sigma^3*N/V, here sigma=1
+#variable    Tstar equal 0.722
+#variable    rhostar equal 0.8442      # rho^* = sigma^3*N/V, here sigma=1
 variable    Nparticle equal 1200
 variable    V equal ${Nparticle}/${rhostar}
 variable    Lbox equal ${V}^(1.0/3.0)
@@ -71,8 +71,7 @@ fix          OUTPUT all ave/time ${Nevery} ${Nrepeat} ${Nfreq} v_Time v_Temp v_p
 thermo_style custom step temp press v_pxz v_pyz v_v11 v_v22 v_v33 v_vavg
 thermo       $d
 
-
-run          1000000
+run          10000000
 variable     etastar equal (v_v11+v_v22+v_v33)/3.0
 variable     ndens equal count(all)/vol
 print        "ndens: ${ndens}"
