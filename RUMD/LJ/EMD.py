@@ -209,7 +209,7 @@ def post_process():
 
         df = pandas.read_csv("msd.dat", sep=' ', names=['t*', 'MSD'])
         plt.plot(df['t*'], df['MSD'], 'o')
-        dfend = df.tail(5)
+        dfend = df.iloc[-6:-1] # 5 points prior to the last one (drop the last point)
         m,b = np.polyfit(dfend['t*'], dfend['MSD'], 1)
         print('Einstein D*:', m/6)
         plt.xlabel(r'$t^*$')
