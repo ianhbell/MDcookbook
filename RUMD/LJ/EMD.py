@@ -170,7 +170,7 @@ def post_process():
 
         res = scipy.optimize.differential_evolution(
             objective,
-            bounds = [(0.0001,100),(-1000, 1000),(-1000,1000),(-100,100)],
+            bounds = [(0,10), (0, 1), (0,100), (0,100)],
             disp = True,
             args = (time_ACF[0:i1stmaxima], int_SACF[0:i1stmaxima])
         )
