@@ -1,9 +1,9 @@
 """
 Carries out a calculation for the shear viscosity near
 the triple point for Lennard-Jones fluid with RUMD
-with the use of the Green-Kubo approach 
+with the use of the Green-Kubo approach
 
-The value according to Meier et al. (doi:10.1063/1.1770695) 
+The value according to Meier et al. (doi:10.1063/1.1770695)
 at T^*=0.722, rho^*=0.8442 should be circa \eta^*=3.258.
 
 For self diffusion at the same state point, the value should be
@@ -12,13 +12,10 @@ this is not nearly enough to capture the infinite size limit
 """
 from __future__ import print_function, division
 
-import timeit
 import subprocess
-import gzip
-import io
 import json
 
-from rumd import *
+import rumd
 from rumd.Simulation import Simulation
 from rumd.Autotune import Autotune
 import rumd.analyze_energies as analyze
@@ -48,12 +45,12 @@ def do_run(Tstar, rhostar):
                           totalEnergy=False,virial=False,pressure=False,volume=True)
 
     # Create potential object.
-    pot = Pot_LJ_12_6(cutoff_method=ShiftedPotential)
+    pot = rumd.Pot_LJ_12_6(cutoff_method=rumd.ShiftedPotential)
     pot.SetParams(i=0, j=0, Sigma=1.00, Epsilon=1.00, Rcut=6.5);
     sim.SetPotential(pot)
 
     # Create integrator object
-    itg = IntegratorNVT(timeStep=0.0025, targetTemperature=Tstar)
+    itg = rumd.IntegratorNVT(timeStep=0.0025, targetTemperature=Tstar)
     sim.SetIntegrator(itg)
 
     # Autotune
@@ -98,10 +95,8 @@ def post_process():
         # Create AnalyzeEnergies object, read relevant columns from energy files
         nrgs = analyze.AnalyzeEnergies()
         nrgs.read_energies(['sxy', 'syz', 'sxz', 'T', 'V'])
-        sxy = nrgs.energies['sxy']
         Tstar = np.mean(nrgs.energies['T'])
         V = np.mean(nrgs.energies['V'])
-        time = nrgs.metadata['interval']*np.arange(len(sxy)) # "Real" time associated with each store
 
         # # Einstein analysis
         # Einstein_integrand = scipy.integrate.cumtrapz(sxy, time, initial=0)**2
@@ -151,7 +146,6 @@ def post_process():
         Tstar = np.mean(nrgs.energies['T'])
         V = np.mean(nrgs.energies['V'])
         Nparticles = nrgs.metadata['num_part']
-        time = nrgs.metadata['interval']*np.arange(len(sxy)) # "Real" time associated with each store
         rhostar = Nparticles/V
 
         # Green-Kubo analysis
