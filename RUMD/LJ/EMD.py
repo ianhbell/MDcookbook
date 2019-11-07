@@ -28,7 +28,7 @@ import numpy as np
 import pandas
 import matplotlib
 matplotlib.use('Agg')
-import scipy.integrate, matplotlib.pyplot as plt, scipy.signal
+import scipy.integrate, matplotlib.pyplot as plt, scipy.signal, scipy.optimize
 
 def do_run(Tstar, rhostar):
 
@@ -152,6 +152,7 @@ def post_process():
         V = np.mean(nrgs.energies['V'])
         Nparticles = nrgs.metadata['num_part']
         time = nrgs.metadata['interval']*np.arange(len(sxy)) # "Real" time associated with each store
+        rhostar = Nparticles/V
 
         # Green-Kubo analysis
         SACF = sum([f_autocorrelation(nrgs.energies[k], Norigins=len(sxy)-2) for k in ['sxy', 'syz', 'sxz']])/3.0
@@ -162,9 +163,31 @@ def post_process():
         # maximum of the SACF is the value to consider when using N-2 time origins
         i1stmaxima = scipy.signal.argrelmax(int_SACF)[0][0]
         print('G-K eta^*:', int_SACF[i1stmaxima])
-        rhostar = Nparticles/V
-        return Tstar, rhostar, int_SACF[i1stmaxima]
-    Tstar, rhostar, etastar = shear_viscosity_GreenKubo()
+
+        # Fit a double-exponential function to the data up to the first local maximum
+        def func(t, coeffs):
+            A, alpha, tau1, tau2 = coeffs
+            return A*alpha*tau1*(1-np.exp(-t/tau1)) + A*(1-alpha)*tau2*(1-np.exp(-t/tau2))
+
+        def objective(coeffs, t, yinput):
+            yfit = func(t, coeffs)
+            return ((yfit-yinput)**2).sum()
+
+        res = scipy.optimize.differential_evolution(
+            objective,
+            bounds = [(0.0001,100),(-1000, 1000),(-1000,1000),(-100,100)],
+            disp = True,
+            args = (df['v_Time'].iloc[0:i1stmaxima], ys[0:i1stmaxima])
+        )
+        coeffs = res.x 
+        print(coeffs)
+        A, alpha, tau1, tau2 = coeffs
+        etastar_func = (A*alpha*tau1 + A*(1-alpha)*tau2)/3
+        print('G-K eta^* from double-exponential function:', etastar_func)
+
+        return Tstar, rhostar, etastar_func, int_SACF[i1stmaxima]
+
+    Tstar, rhostar, etastar, etastar_1stmax = shear_viscosity_GreenKubo()
 
     def self_diffusion_Einstein():
 
@@ -201,7 +224,8 @@ def post_process():
             {
                 'T^*': Tstar,
                 'rho^*': rhostar,
-                'eta^*':etastar,
+                'eta^* (1st maximum)':etastar_1stmax,
+                'eta^*':etastar_func,
                 'D^*':Dstar
             }
         ))
