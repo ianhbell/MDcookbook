@@ -158,13 +158,14 @@ def post_process():
         SACF = sum([f_autocorrelation(nrgs.energies[k], Norigins=len(sxy)-2) for k in ['sxy', 'syz', 'sxz']])/3.0
         time_ACF = nrgs.metadata['interval']*np.arange(0, len(SACF)) # interval is total time between dumps
         int_SACF = V/Tstar*scipy.integrate.cumtrapz(SACF, time_ACF, initial=0)
-        # The autocorrelation function depends on the number of time origin points taken, 
+        # The autocorrelation function depends on the number of time origin points taken,
         # but the time origin curves are coincident, and overlap perfectly, so the first local
         # maximum of the SACF is the value to consider when using N-2 time origins
         i1stmaxima = scipy.signal.argrelmax(int_SACF)[0][0]
         print('G-K eta^*:', int_SACF[i1stmaxima])
 
         # Fit a double-exponential function to the data up to the first local maximum
+        # of the integral of the stress autocorrelation function
         def func(t, coeffs):
             A, alpha, tau1, tau2 = coeffs
             return A*alpha*tau1*(1-np.exp(-t/tau1)) + A*(1-alpha)*tau2*(1-np.exp(-t/tau2))
@@ -177,13 +178,28 @@ def post_process():
             objective,
             bounds = [(0.0001,100),(-1000, 1000),(-1000,1000),(-100,100)],
             disp = True,
-            args = (df['v_Time'].iloc[0:i1stmaxima], ys[0:i1stmaxima])
+            args = (time_ACF[0:i1stmaxima], int_SACF[0:i1stmaxima])
         )
-        coeffs = res.x 
+        coeffs = res.x
         print(coeffs)
         A, alpha, tau1, tau2 = coeffs
-        etastar_func = (A*alpha*tau1 + A*(1-alpha)*tau2)/3
+        etastar_func = A*alpha*tau1 + A*(1-alpha)*tau2
         print('G-K eta^* from double-exponential function:', etastar_func)
+
+        t = np.linspace(0, time_ACF[i1stmaxima]*100, 10000)
+        y = func(t, coeffs)
+        plt.plot(t, y, dashes=[2,2])
+        plt.plot(time_ACF, int_SACF)
+        plt.plot(time_ACF[i1stmaxima], int_SACF[i1stmaxima], 'd')
+        plt.xlim(0, time_ACF[i1stmaxima*2])
+        plt.ylim(0, int_SACF[i1stmaxima]*1.5)
+        plt.axhline(etastar_func)
+
+        plt.xlabel('ACF time points')
+        plt.ylabel(r'$\int_0^{t^*} \left\langle \tau_{\alpha\beta}(0)\tau_{\alpha\beta}(x) \right\rangle {\rm d} x$')
+        plt.savefig('GreenKubo_fitting.pdf')
+        plt.tight_layout(pad=0.2)
+        plt.close()
 
         return Tstar, rhostar, etastar_func, int_SACF[i1stmaxima]
 
@@ -225,7 +241,7 @@ def post_process():
                 'T^*': Tstar,
                 'rho^*': rhostar,
                 'eta^* (1st maximum)':etastar_1stmax,
-                'eta^*':etastar_func,
+                'eta^*':etastar,
                 'D^*':Dstar
             }
         ))
