@@ -170,24 +170,45 @@ def post_process():
 
         res = scipy.optimize.differential_evolution(
             objective,
-            bounds = [(0,10), (0, 1), (0,100), (0,100)],
+            bounds = [(0,10), (0, 1), (0,100),(0,100)],
             disp = True,
             args = (time_ACF[0:i1stmaxima], int_SACF[0:i1stmaxima])
         )
         coeffs = res.x
         print(coeffs)
         A, alpha, tau1, tau2 = coeffs
-        etastar_func = A*alpha*tau1 + A*(1-alpha)*tau2
-        print('G-K eta^* from double-exponential function:', etastar_func)
+        etastar_double = A*alpha*tau1 + A*(1-alpha)*tau2
+        print('G-K eta^* from double-exponential function:', etastar_double)
+
+        # Fit a double-exponential function to the data up to the first local maximum
+        # of the integral of the stress autocorrelation function
+        def func2(t, coeffs):
+            etainfty, tau2, beta = coeffs
+            return etainfty*(1-np.exp(-(t/tau2)**beta))
+
+        def objective(coeffs, t, yinput):
+            yfit = func2(t, coeffs)
+            return ((yfit-yinput)**2).sum()
+
+        res = scipy.optimize.differential_evolution(
+            objective,
+            bounds = [(int_SACF[i1stmaxima]*0.5, int_SACF[i1stmaxima]*2), (0,100),(0,100)],
+            disp = True,
+            args = (time_ACF[0:i1stmaxima], int_SACF[0:i1stmaxima])
+        )
+        coeffs = res.x
+        print(coeffs)
+        etainfty, tau2, beta = coeffs
+        print('G-K eta^* from single exponential function:', etainfty)
 
         t = np.linspace(0, time_ACF[i1stmaxima]*100, 10000)
-        y = func(t, coeffs)
+        y = func2(t, coeffs)
         plt.plot(t, y, dashes=[2,2])
         plt.plot(time_ACF, int_SACF)
         plt.plot(time_ACF[i1stmaxima], int_SACF[i1stmaxima], 'd')
         plt.xlim(0, time_ACF[i1stmaxima*2])
         plt.ylim(0, int_SACF[i1stmaxima]*1.5)
-        plt.axhline(etastar_func)
+        plt.axhline(etainfty)
 
         plt.xlabel('ACF time points')
         plt.ylabel(r'$\int_0^{t^*} \left\langle \tau_{\alpha\beta}(0)\tau_{\alpha\beta}(x) \right\rangle {\rm d} x$')
@@ -195,9 +216,9 @@ def post_process():
         plt.tight_layout(pad=0.2)
         plt.close()
 
-        return Tstar, rhostar, etastar_func, int_SACF[i1stmaxima]
+        return Tstar, rhostar, etainfty, etastar_double, int_SACF[i1stmaxima]
 
-    Tstar, rhostar, etastar, etastar_1stmax = shear_viscosity_GreenKubo()
+    Tstar, rhostar, etastar, etastar_double, etastar_1stmax = shear_viscosity_GreenKubo()
 
     def self_diffusion_Einstein():
 
@@ -235,6 +256,7 @@ def post_process():
                 'T^*': Tstar,
                 'rho^*': rhostar,
                 'eta^* (1st maximum)':etastar_1stmax,
+                'eta^* (double exp)':etastar_double,
                 'eta^*':etastar,
                 'D^*':Dstar
             }
