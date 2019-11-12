@@ -30,12 +30,16 @@ import scipy.integrate, matplotlib.pyplot as plt, scipy.signal, scipy.optimize
 def do_run(Tstar, rhostar):
 
     # Generate the starting state
-    subprocess.check_call('rumd_init_conf --num_par=1331 --cells=11,11,11 --rho='+str(rhostar), shell=True)
+    subprocess.check_call('rumd_init_conf --num_par=1372 --cells=15,15,15 --rho='+str(rhostar), shell=True)
 
     # Create simulation object
     sim = Simulation("start.xyz.gz")
     sim.SetOutputScheduling("trajectory", "logarithmic")
-    sim.SetOutputScheduling("energies", "linear", interval=1)
+    # Ideally we would like to dump energies at every time step, but that
+    # bottle-necks the simulation because of the copying from GPU->CPU
+    # This can also be seen by the mean load on the GPU, which should be
+    # close to 100% if the output is not throttling the simulation
+    sim.SetOutputScheduling("energies", "linear", interval=10)
     block_size = 16384//2
     sim.SetBlockSize(block_size)
 
@@ -60,8 +64,8 @@ def do_run(Tstar, rhostar):
     # Equilibration for 300k steps
     sim.Run(300*10**3, suppressAllOutput=True)
     # Production
-    prod_steps = block_size*400
-    print(prod_steps, 'production time steps')
+    prod_steps = block_size*1400
+    print(prod_steps/10**6, '10^6 production time steps')
     sim.Run(prod_steps)
 
     # End of run.
@@ -147,6 +151,10 @@ def post_process():
         V = np.mean(nrgs.energies['V'])
         Nparticles = nrgs.metadata['num_part']
         rhostar = Nparticles/V
+        time = nrgs.metadata['interval']*np.arange(0, len(sxy))
+        oo = {k:nrgs.energies[k] for k in ['sxy', 'syz', 'sxz','T', 'V']}
+        oo['time'] = time
+        pandas.DataFrame(oo).to_csv('energies.csv',index=False)
 
         # Green-Kubo analysis
         SACF = sum([f_autocorrelation(nrgs.energies[k], Norigins=len(sxy)-2) for k in ['sxy', 'syz', 'sxz']])/3.0
