@@ -72,12 +72,25 @@ def do_run(Tstar, rhostar):
     sim.sample.WriteConf("end.xyz.gz")
     sim.sample.TerminateOutputManagers()
 
-def ACF_FFT(v, Norigins):
+def padto2(y):
+    """
+    Pad an array of arbitrary length with trailing zeros to make
+    the length a power of 2.  This makes the FFT autocorrelation
+    of the array MUCH faster.
+    """
+    N = int(np.ceil(np.log2(len(y))))
+    ynew = np.zeros((2**N,))
+    ynew[0:len(y)] = y
+    return ynew
+
+def ACF_FFT(v, Norigins, num_zeros):
     """
     See https://github.com/Allen-Tildesley/examples/blob/master/python_examples/corfun.py
+
+    num_zeros: the number of zeros that are at the end of the array to pad to a power of 2
     """
     nstep = len(v)
-    n = np.linspace(nstep,nstep-Norigins,Norigins+1,dtype=np.float_)
+    n = np.linspace(nstep-num_zeros,nstep-num_zeros-Norigins,Norigins+1,dtype=np.float_)
     assert np.all(n>0.5), 'Normalization array error' # Should never happen
 
     # Data analysis (FFT method)
@@ -114,8 +127,10 @@ def post_process():
         # plt.savefig('Einstein_term.pdf')
         # plt.close()
 
+        len_padded = padto2(nrgs.energies['sxy'])
+
         for Norigins in [10, 100, 1000, 10000, 100000]:
-            SACF = sum([f_autocorrelation(nrgs.energies[k], Norigins=Norigins) for k in ['sxy', 'syz', 'sxz']])/3.0
+            SACF = sum([f_autocorrelation(nrgs.energies[k], Norigins=Norigins, num_zeros=len_padded-len(nrgs.energies[k]) ) for k in ['sxy', 'syz', 'sxz']])/3.0
             time_ACF = nrgs.metadata['interval']*np.arange(0, len(SACF)) # interval is total simulation time interval between dumps
             int_SACF = V/Tstar*scipy.integrate.cumtrapz(SACF, time_ACF, initial=0)
             print(Norigins, 'G-K eta^*:', int_SACF[-1])
@@ -188,7 +203,7 @@ def post_process():
         etastar_double = A*alpha*tau1 + A*(1-alpha)*tau2
         print('G-K eta^* from double-exponential function:', etastar_double)
 
-        # Fit a double-exponential function to the data up to the first local maximum
+        # Fit a single-exponential function to the data up to the first local maximum
         # of the integral of the stress autocorrelation function
         def func2(t, coeffs):
             etainfty, tau2, beta = coeffs
