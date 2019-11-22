@@ -171,8 +171,10 @@ def post_process():
         oo['time'] = time
         pandas.DataFrame(oo).to_csv('energies.csv',index=False)
 
+        len_padded = padto2(nrgs.energies['sxy'])
+
         # Green-Kubo analysis
-        SACF = sum([f_autocorrelation(nrgs.energies[k], Norigins=len(sxy)-2) for k in ['sxy', 'syz', 'sxz']])/3.0
+        SACF = sum([f_autocorrelation(nrgs.energies[k], Norigins=len(sxy)-2, num_zeros=len_padded-len(sxy)) for k in ['sxy', 'syz', 'sxz']])/3.0
         time_ACF = nrgs.metadata['interval']*np.arange(0, len(SACF)) # interval is total time between dumps
         int_SACF = V/Tstar*scipy.integrate.cumtrapz(SACF, time_ACF, initial=0)
         # The autocorrelation function depends on the number of time origin points taken,
