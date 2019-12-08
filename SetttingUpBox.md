@@ -72,3 +72,7 @@ On the host, make GPU cards exclusive per process
 ```
 nvidia-smi -c 1
 ```
+
+SLURM
+
+https://ubuntuforums.org/showthread.php?t=2404746
