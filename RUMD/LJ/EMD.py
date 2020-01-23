@@ -127,10 +127,11 @@ def post_process():
         # plt.savefig('Einstein_term.pdf')
         # plt.close()
 
-        len_padded = len(padto2(nrgs.energies['sxy']))
+        padded = padto2(nrgs.energies['sxy'])
+        len_padded = len(padded)
 
         for Norigins in [10, 100, 1000, 10000, 100000]:
-            SACF = sum([f_autocorrelation(nrgs.energies[k], Norigins=Norigins, num_zeros=len_padded-len(nrgs.energies[k]) ) for k in ['sxy', 'syz', 'sxz']])/3.0
+            SACF = sum([f_autocorrelation(padto2(nrgs.energies[k]), Norigins=Norigins, num_zeros=len_padded-len(nrgs.energies[k]) ) for k in ['sxy', 'syz', 'sxz']])/3.0
             time_ACF = nrgs.metadata['interval']*np.arange(0, len(SACF)) # interval is total simulation time interval between dumps
             int_SACF = V/Tstar*scipy.integrate.cumtrapz(SACF, time_ACF, initial=0)
             print(Norigins, 'G-K eta^*:', int_SACF[-1])
@@ -174,7 +175,7 @@ def post_process():
         len_padded = len(padto2(sxy))
 
         # Green-Kubo analysis
-        SACF = sum([f_autocorrelation(nrgs.energies[k], Norigins=len(sxy)-2, num_zeros=len_padded-len(sxy)) for k in ['sxy', 'syz', 'sxz']])/3.0
+        SACF = sum([f_autocorrelation(padto2(nrgs.energies[k]), Norigins=len(sxy)-2, num_zeros=len_padded-len(sxy)) for k in ['sxy', 'syz', 'sxz']])/3.0
         time_ACF = nrgs.metadata['interval']*np.arange(0, len(SACF)) # interval is total time between dumps
         int_SACF = V/Tstar*scipy.integrate.cumtrapz(SACF, time_ACF, initial=0)
         # The autocorrelation function depends on the number of time origin points taken,
