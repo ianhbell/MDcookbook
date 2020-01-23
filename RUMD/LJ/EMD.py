@@ -127,7 +127,7 @@ def post_process():
         # plt.savefig('Einstein_term.pdf')
         # plt.close()
 
-        len_padded = padto2(nrgs.energies['sxy'])
+        len_padded = len(padto2(nrgs.energies['sxy']))
 
         for Norigins in [10, 100, 1000, 10000, 100000]:
             SACF = sum([f_autocorrelation(nrgs.energies[k], Norigins=Norigins, num_zeros=len_padded-len(nrgs.energies[k]) ) for k in ['sxy', 'syz', 'sxz']])/3.0
@@ -171,7 +171,7 @@ def post_process():
         oo['time'] = time
         pandas.DataFrame(oo).to_csv('energies.csv',index=False)
 
-        len_padded = padto2(nrgs.energies['sxy'])
+        len_padded = len(padto2(sxy))
 
         # Green-Kubo analysis
         SACF = sum([f_autocorrelation(nrgs.energies[k], Norigins=len(sxy)-2, num_zeros=len_padded-len(sxy)) for k in ['sxy', 'syz', 'sxz']])/3.0
