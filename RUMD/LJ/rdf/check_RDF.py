@@ -1,13 +1,13 @@
 from __future__ import print_function
 import sys
 
-import os, json, shutil
+import os, shutil
 from collections import namedtuple
 EMDPoint = namedtuple('EMDPoint', ['Tstar','rhostar','etastar','Dstar'])
 
 pts = []
 for Tstar in [2, 3, 4, 5, 6]:
-    for rho in [0.1, 0.5, 1.0, 1.5]:
+    for rhostar in [0.1, 0.5, 1.0, 1.5]:
         pts.append(EMDPoint(Tstar, rhostar, None, None))
 
 sys.path.insert(0, '..')
