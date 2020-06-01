@@ -1,3 +1,8 @@
+
+``
+cd docker
+``
+
 Build:
 ```
 docker build -t rumd .
