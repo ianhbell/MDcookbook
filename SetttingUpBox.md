@@ -1,3 +1,10 @@
+
+Download the correct driver from http://www.nvidia.com/Download/index.aspx, save to host computer.  Run it:
+```
+sudo bash NVIDIA-Linux-x86_64-450.66.run
+nvidia-smi
+```
+
 Install the driver for nvidia directly from Ubuntu 18.04 (https://linuxconfig.org/how-to-install-the-nvidia-drivers-on-ubuntu-18-04-bionic-beaver-linux)
 ```
 ubuntu-drivers devices
