@@ -57,20 +57,19 @@ the U/N of RUMD is the same thing as ur/N from EOS, so
 #     return -LennardJones126.get_alphar_deriv(Tcstar/T, rho/rhoc, 1, 0)/T
 
 class RUMDSimulation():
-    def __init__(self, *, Tstar, rhostar, Rcut=2.5):
+    def __init__(self, *, Tstar, rhostar, Rcut=10):
         import rumd
         from rumd.Simulation import Simulation
 
-        BlockSize = 524288//8
-        NumBlocks = 50
-
-        # Generate the starting state
-        subprocess.check_call('rumd_init_conf --num_par=1024 --cells=15,15,15 --rho='+str(rhostar), shell=True)
+        # Generate the starting state in the file start.xyz.gz
+        subprocess.check_call('rumd_init_conf -q --num_par=1024 --cells=15,15,15 --rho='+str(rhostar), shell=True)
 
         # Create simulation object
         sim = Simulation("start.xyz.gz", pb=16, tp=8)
 
-        #sim.SetBlockSize(BlockSize)
+        # Be quiet...
+        sim.SetVerbose(False)
+
         sim.SetOutputScheduling("trajectory", "none")
         sim.SetOutputScheduling("energies", "linear", interval=8)
 
@@ -89,9 +88,6 @@ class RUMDSimulation():
         itg = rumd.IntegratorNVT(timeStep=0.0025, targetTemperature=Tstar)
         itg.SetRelaxationTime(0.2)
         sim.SetIntegrator(itg)
-
-        # Be quiet...
-        sim.SetVerbose(False)
 
         n_equil_steps = 100000
         n_run_steps = 100000
@@ -121,7 +117,7 @@ def get_dalphardT(T, rho):
     print('T,rho:', T, rho)
     return -sim.U_over_N/T**2
 
-force_build = False
+force_build = True
 
 # --------------------
 #     ISOTHERM 
@@ -174,7 +170,6 @@ rho_target = j['rho_integration']
 ce_anti_isoD = ce_isoD.integrate(1) # Anti-derivative of dalphar/dT w.r.t. T gives alphar along the isochore
 # Array of temperatures to evaluate the properties
 Ts = np.linspace(T_integration, T_target)
-Ts = np.array([3,2.1,1.9,1.7,1.5,1.3,1.1,0.9,0.7])
 alphar = alphar_int + ce_anti_isoD.y(Ts)-ce_anti_isoD.y(T_integration)
 # dalphar_dT = ce_isoD.y(T_target)
 # print(alphar,'\n', LennardJones126.get_alphar_deriv(Tcstar/T_target, rho_target/rhoc,0,0))
