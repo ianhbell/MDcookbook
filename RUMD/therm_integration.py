@@ -1,11 +1,14 @@
 import subprocess
 import json
 import os
+import gzip
+
+import pandas
+import numpy as np
 
 import LennardJones126
 import ChebTools
-
-import numpy as np
+import scipy.integrate
 
 T_integration = 3 # Isotherm along which integration is carried out
 T_target = 0.7 # Targeted end of integration
@@ -56,6 +59,58 @@ the U/N of RUMD is the same thing as ur/N from EOS, so
 # def get_dalphardT(T, rho):
 #     return -LennardJones126.get_alphar_deriv(Tcstar/T, rho/rhoc, 1, 0)/T
 
+def calc_s2kB(folder):
+    """ Calculate the two-body excess entropy from integration of radial distribution function """
+
+    Ncol = len(open(folder + '/rdf.dat').readlines()[6].split(' '))
+    if Ncol == 6:
+        names = ['r','gAA','gAB','gBA','gBB','dummy']
+    elif Ncol == 3:
+        names = ['r','gAA','dummy']
+    else:
+        raise ValueError(folder)
+
+    rdf = pandas.read_csv(folder + '/rdf.dat', comment='#', names = names, sep=' ')
+    # rdf.info()
+
+    dr = rdf.r.iloc[1] - rdf.r.iloc[0]
+
+    Nstr, info = gzip.open('start.xyz.gz').readlines()[0:2]
+    N = int(Nstr)
+    parts = info.decode('utf-8').strip().split(' ')
+    meta = {}
+    for part in parts:
+        k, v = part.split('=', 1)
+        meta[k] = v
+    assert(int(meta['numTypes'])==1)
+    L, W, H = [float(_) for _ in meta['sim_box'].split(',')[1:4]]
+    V = L*W*H
+    rho = N/V
+
+    molefrac = {'A': 1.0}
+
+    # For multicomponent mixtures, add back determination of mole fractions of each component
+    # for component, n in zip(['A','B'], results['num_par']):
+    #     molefrac[component] = n/N
+
+    rdf = rdf[rdf.r < L/2.0]
+
+    if 'gAB' in rdf:
+        particle_pairs = [('A','A'), ('A','B'), ('B','A'), ('B','B')]
+    else:
+        particle_pairs = [('A','A')]
+
+    summer = 0.0
+    for particle_pair in particle_pairs:
+        p0, p1 = particle_pair
+        x0, x1 = molefrac[p0], molefrac[p1]
+        k = 'g' + ''.join(particle_pair)
+        integrand = np.array((rdf[k]*np.log(rdf[k]) - (rdf[k]-1))*rdf.r**2)
+        # Fix points with gxy == 0; limit of x*ln(x) as x --> 0 is zero
+        integrand[rdf[k] == 0] = np.array(rdf.r)[rdf[k] == 0]**2
+        summer += x0*x1*scipy.integrate.trapz(x=rdf.r, y=integrand)
+    return -2*np.pi*rho*summer
+
 class RUMDSimulation():
     def __init__(self, *, Tstar, rhostar, Rcut=10):
         import rumd
@@ -70,7 +125,7 @@ class RUMDSimulation():
         # Be quiet...
         sim.SetVerbose(False)
 
-        sim.SetOutputScheduling("trajectory", "none")
+        sim.SetOutputScheduling("trajectory", "logarithmic")
         sim.SetOutputScheduling("energies", "linear", interval=8)
 
         sim.SetOutputMetaData(
@@ -99,9 +154,22 @@ class RUMDSimulation():
         rs.ComputeStats()
         meanVals = rs.GetMeanVals()
 
+        sim.sample.TerminateOutputManagers()
+
         # Store the outputs
         self.U_over_N = meanVals['pe']
         self.W_over_N = meanVals['W']
+
+        # Calculate s_2
+        rdf_obj = rumd.Tools.rumd_rdf()
+        # Constructor arguments: number of bins and minimum time
+        rdf_obj.ComputeAll(1000, 1.0)
+        # Include the state point information in the rdf file name
+        rdf_obj.WriteRDF("rdf.dat")
+
+        # s^+_2 = -s_2/k_B
+        self.splus2 = -calc_s2kB(os.path.abspath(os.path.dirname(__file__)))
+        print('s^+_2', self.splus2)
 
 def get_dalphardrho(T, rho):
     # Do a simulation, get dalphar/drho|T = (W/N)/(k_B*T)/rho; RUMD returns W/N
@@ -111,10 +179,16 @@ def get_dalphardrho(T, rho):
     print('p^*:', LennardJones126.LJ_p(T, rho))
     return val
 
+s2vals = []
 def get_dalphardT(T, rho):
     # Do a simulation, get dalphar/dT|rho = -(U/N)/(kB*T^2); RUMD returns U/N
     sim = RUMDSimulation(Tstar=T, rhostar=rho)
     print('T,rho:', T, rho)
+    s2vals.append({
+        'T': T, 
+        'rho': rho,
+        's^+_2': sim.splus2
+        })
     return -sim.U_over_N/T**2
 
 force_build = True
@@ -178,3 +252,17 @@ print(Ts, sex_kB)
 
 print('my -sex/kB: ', sex_kB[-1])
 print('Thol -sex/kB: ', LennardJones126.LJ_sr_over_R(T_target, rho_target))
+
+df = pandas.DataFrame(s2vals)
+Ts = np.array(df['T'])
+alphar = alphar_int + ce_anti_isoD.y(Ts)-ce_anti_isoD.y(T_integration)
+sex_kB = (-alphar-Ts*ce_isoD.y(Ts))
+df['s^+'] = -sex_kB
+df.to_csv('s2vals.csv', index=False)
+
+import matplotlib.pyplot as plt
+plt.plot(df['T'], df['s^+'], label=r'$s^+_{\rm total}$')
+plt.plot(df['T'], df['s^+_2'], label='r$s^+_2$')
+plt.legend(loc='best')
+plt.savefig('splus_terms.pdf')
+plt.close()
