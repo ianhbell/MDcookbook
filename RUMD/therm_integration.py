@@ -11,8 +11,8 @@ import ChebTools
 import scipy.integrate
 
 T_integration = 3 # Isotherm along which integration is carried out
-T_target = 0.7 # Targeted end of integration
-rho_target = 0.85 # 
+T_target = 0.5 # Targeted end of integration
+rho_target = 0.8442 # 
 
 # Get some constants 
 rhoc = LennardJones126.rhocstar
@@ -228,7 +228,7 @@ isoD_cachefile = 'ce_isoD.json'
 # Load expansion or build it
 if not os.path.exists(isoD_cachefile) or force_build:
     # Chebyshev expansion in dalphar/dT along the isochore; alphar-alphar(Tintegration,rho) = \int_{Tintegration}^{Ttarget} (dalphar/dT|rho) * dT
-    ce_isoD = ChebTools.generate_Chebyshev_expansion(10, lambda T: get_dalphardT(T, rho_target), T_integration, T_target)
+    ce_isoD = ChebTools.generate_Chebyshev_expansion(20, lambda T: get_dalphardT(T, rho_target), T_integration, T_target)
     with open('ce_isoD.json','w') as fp:
         fp.write(json.dumps({
             'coef': ce_isoD.coef().tolist(),
@@ -262,7 +262,7 @@ df.to_csv('s2vals.csv', index=False)
 
 import matplotlib.pyplot as plt
 plt.plot(df['T'], df['s^+'], label=r'$s^+_{\rm total}$')
-plt.plot(df['T'], df['s^+_2'], label='r$s^+_2$')
+plt.plot(df['T'], df['s^+_2'], label=r'$s^+_2$')
 plt.legend(loc='best')
 plt.savefig('splus_terms.pdf')
 plt.close()
