@@ -1,4 +1,6 @@
-import subprocess
+import sys, os, subprocess
+import numpy as np
+import pandas
 
 ####### SETUP OF TOPOLOGY AND MOLECULE #######
 
@@ -41,13 +43,11 @@ def generate_files(*, chain_length):
 
 ####### RUN SCRIPT ######
 
-import sys, os, numpy as np
-
 import rumd
 from rumd.Simulation import Simulation
 from rumd.RunCompress import RunCompress
 
-def run_one(*, bond_method, chain_length):
+def run_one(*, bond_method, chain_length, Tstar, segment_density):
 
     generate_files(chain_length=chain_length)
 
@@ -73,7 +73,7 @@ def run_one(*, bond_method, chain_length):
     sim.ReadMoleculeData("start.top")
 
     # Create integrator object
-    itg = rumd.IntegratorNVT(targetTemperature=4.00, timeStep=0.0025)
+    itg = rumd.IntegratorNVT(targetTemperature=Tstar, timeStep=0.0025)
     sim.SetIntegrator(itg)
 
     # Create potential object; potential is applied initially to all pairs of sites, both in the same chain and cross
@@ -94,7 +94,8 @@ def run_one(*, bond_method, chain_length):
         # Harmonic bond
         pot_harm = rumd.BondHarmonic()
         # N.B.: exclude=True means that the potential defined above will not be used for the bonded interaction, and only the harmonic bit will be
-        pot_harm.SetParams(bond_type=0, stiffness=3000.0, bond_length=1.0, exclude=True) # exclude seems to have no impact here...
+        stiffness = 3000.0
+        pot_harm.SetParams(bond_type=0, stiffness=stiffness, bond_length=1.0, exclude=True) # exclude seems to have no impact here...
         sim.AddPotential(pot_harm)
     elif bond_method == 'FENE':
         # Finite Extensible Nonlinear Elastic (FENE) potential between segments of chain
@@ -105,7 +106,7 @@ def run_one(*, bond_method, chain_length):
     else:
         raise KeyError(f"Bad bond method: {bond_method:s}")
 
-    RunCompress(sim, final_density=0.3) # final_density is the number of segments per volume
+    RunCompress(sim, final_density=segment_density) # final_density is the number of segments per volume
 
     # Run simulation
     sim.Run(BlockSize,suppressAllOutput=True)
@@ -122,17 +123,52 @@ def run_one(*, bond_method, chain_length):
     rs = rumd.Tools.rumd_stats()
     rs.ComputeStats()
     meanVals = rs.GetMeanVals()
-    print(meanVals)
 
     # Store the outputs
     U_per_particle = meanVals['pe']
     W_per_particle = meanVals['W']
 
-    print('U per chain:', U_per_particle*chain_length)
-    print('W per chain:', W_per_particle*chain_length)
-    print('P', meanVals['p'])
+    # Calculate an approximate value for the potential energy coming from the bonds
+    Ubonds_per_chain = 0.0
+    if bond_method == 'Harmonic':
+        subprocess.check_call('rumd_bonds -n 10000 -t start.top', shell=True)
+        df = pandas.read_csv('bonds.dat', sep=' ', comment='#', names = ['length','count','dummy'])
+        del df['dummy']
+        # df.info()
+        # Calculate the average energy per bond based on bond length distribution
+        Ubonds_per_bond = stiffness/2.0*((df['length']-1.0)**2*df['count']).sum()/df['count'].sum()
+        # Then calculate the bonding energy per chain
+        Nbonds = len([line for line in open('start.top').readlines() if line.strip()]) -2 # Total number of bonds (-2 for two lines of header; each non-empty line is a bond)
+        Natoms = sim.GetNumberOfParticles() # Total number of atoms
+        Ubonds_per_chain = Ubonds_per_bond*Nbonds/Natoms*chain_length
+
+    o = {
+        'chain_length': chain_length,
+        'Tstar': Tstar,
+        'segment_density': segment_density,
+        'U/chain': U_per_particle*chain_length,
+        'Ur/chain': U_per_particle*chain_length - Ubonds_per_chain,
+        'W/chain': W_per_particle*chain_length,
+        'P': meanVals['p']
+    }
+    print(o)
+
+    print('U/chain:', o['U/chain'])
+    print('Ur/chain:', o['Ur/chain'])
+    print('W/chain:', o['W/chain'])
+    print('P', o['P'])
+    return o
 
 if __name__ == '__main__':
-    for bond_method in ['Harmonic']:#,'Constrained']:
-        print('\n***Bond method:', bond_method)
-        run_one(bond_method=bond_method, chain_length=12)
+    # for bond_method in ['Harmonic']:#,'Constrained']:
+    #     print('\n***Bond method:', bond_method)
+    #     run_one(bond_method=bond_method, chain_length=12, Tstar=4, segment_density=0.5)
+
+    # Johnson 12-mer results
+    o = []
+    for Tstar, segment_density in [
+        (4.0,0.9),(4.0,0.8),(4.0,0.7),(4.0,0.5),(4.0,0.3),(4.0,0.1),
+        (3.0,0.9),(3.0,0.8),(3.0,0.7),(3.0,0.5),(3.0,0.3),(3.0,0.1),
+        (2.0,0.9),(2.0,0.8),(2.0,0.7)]:
+        o.append(run_one(bond_method='Harmonic', chain_length=12, Tstar=Tstar, segment_density=segment_density))
+    pandas.DataFrame(o).to_csv('Johnson12mer.csv', index=False)
