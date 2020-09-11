@@ -10,16 +10,6 @@ import LennardJones126
 import ChebTools
 import scipy.integrate
 
-T_integration = 3 # Isotherm along which integration is carried out
-T_target = 0.5 # Targeted end of integration
-rho_target = 0.8442 # 
-
-# Get some constants 
-rhoc = LennardJones126.rhocstar
-Tcstar = LennardJones126.Tcstar
-tau = Tcstar/T_integration
-tau_integration = tau
-
 # Convenience functions that would be replaced by outputs from simulation
 
 """
@@ -53,11 +43,11 @@ the U/N of RUMD is the same thing as ur/N from EOS, so
 
 """
 
-# # Calculate values from the EOS, for checking of method
-# def get_dalphardrho(T, rho):
-#     return LennardJones126.get_alphar_deriv(Tcstar/T, rho/rhoc, 0, 1)/rho
-# def get_dalphardT(T, rho):
-#     return -LennardJones126.get_alphar_deriv(Tcstar/T, rho/rhoc, 1, 0)/T
+# Calculate values from the EOS, for checking of method
+def get_dalphardrho_TholLJ(T, rho):
+    return LennardJones126.get_alphar_deriv(LennardJones126.Tcstar/T, rho/LennardJones126.rhocstar, 0, 1)/rho
+def get_dalphardT_TholLJ(T, rho):
+    return -LennardJones126.get_alphar_deriv(LennardJones126.Tcstar/T, rho/LennardJones126.rhocstar, 1, 0)/T
 
 def calc_s2kB(folder):
     """ Calculate the two-body excess entropy from integration of radial distribution function """
@@ -120,7 +110,7 @@ class RUMDSimulation():
         subprocess.check_call('rumd_init_conf -q --num_par=1024 --cells=15,15,15 --rho='+str(rhostar), shell=True)
 
         # Create simulation object
-        sim = Simulation("start.xyz.gz", pb=16, tp=8)
+        sim = Simulation("start.xyz.gz", pb=16, tp=8, verbose=False)
 
         # Be quiet...
         sim.SetVerbose(False)
@@ -140,12 +130,12 @@ class RUMDSimulation():
         sim.SetPotential(pot)
 
         # Create integrator object
-        itg = rumd.IntegratorNVT(timeStep=0.0025, targetTemperature=Tstar)
+        itg = rumd.IntegratorNVT(timeStep=0.00025, targetTemperature=Tstar)
         itg.SetRelaxationTime(0.2)
         sim.SetIntegrator(itg)
 
         n_equil_steps = 100000
-        n_run_steps = 100000
+        n_run_steps = 10000
         sim.Run(n_equil_steps, suppressAllOutput=True)
         sim.Run(n_run_steps)
 
@@ -153,6 +143,7 @@ class RUMDSimulation():
         rs = rumd.Tools.rumd_stats()
         rs.ComputeStats()
         meanVals = rs.GetMeanVals()
+        print(meanVals)
 
         sim.sample.TerminateOutputManagers()
 
@@ -171,98 +162,114 @@ class RUMDSimulation():
         self.splus2 = -calc_s2kB(os.path.abspath(os.path.dirname(__file__)))
         print('s^+_2', self.splus2)
 
-def get_dalphardrho(T, rho):
+def get_dalphardrho_RUMD(T, rho):
     # Do a simulation, get dalphar/drho|T = (W/N)/(k_B*T)/rho; RUMD returns W/N
     sim = RUMDSimulation(Tstar=T, rhostar=rho)
     val = sim.W_over_N/T/rho
-    print('T,rho:', T, rho, 'dalphar/drho values', val, LennardJones126.get_alphar_deriv(Tcstar/T, rho/rhoc, 0, 1)/rho)
+    print('T,rho,val:', T, rho, val)#, 'dalphar/drho values', val, LennardJones126.get_alphar_deriv(Tcstar/T, rho/rhoc, 0, 1)/rho)
     print('p^*:', LennardJones126.LJ_p(T, rho))
     return val
 
 s2vals = []
-def get_dalphardT(T, rho):
+def get_dalphardT_RUMD(T, rho):
     # Do a simulation, get dalphar/dT|rho = -(U/N)/(kB*T^2); RUMD returns U/N
     sim = RUMDSimulation(Tstar=T, rhostar=rho)
-    print('T,rho:', T, rho)
+    val = -sim.U_over_N/T**2
+    print('T,rho,val:', T, rho, val)
     s2vals.append({
         'T': T, 
         'rho': rho,
         's^+_2': sim.splus2
         })
-    return -sim.U_over_N/T**2
+    return val
 
 force_build = True
 
-# --------------------
-#     ISOTHERM 
-# --------------------
-rhomin = 0.01
-isoT_cachefile = 'ce_isoT.json'
-# Load expansion or build it
-if not os.path.exists(isoT_cachefile) or force_build:
-    # Chebyshev expansion in dalphar/drho along the isotherm; alphar=ar/T
-    ce_isoT = ChebTools.generate_Chebyshev_expansion(10, lambda rho: get_dalphardrho(T_integration, rho), rhomin, rho_target)
-    # Store as JSON
-    with open('ce_isoT.json','w') as fp:
-        fp.write(json.dumps({
-            'coef': ce_isoT.coef().tolist(),
-            'xmin': rhomin,
-            'xmax': rho_target,
-            'T_integration': T_integration        
-            }))
-# (Re)load from cache file
-j = json.load(open(isoT_cachefile))
-ce_isoT = ChebTools.ChebyshevExpansion(j['coef'], j['xmin'], j['xmax'])
-T_integration = j['T_integration']
+def one_integration(T_integration, T_target, rho_target, *, get_dalphardrho, get_dalphardT, prefix=None):
 
-ce_anti_isoT = ce_isoT.integrate(1) # Anti-derivative of dalphar/drho
-# Correct for the difference in residual Helmholtz energy between zero density and rhomin
-alphar_correction = rhomin*ce_isoT.y(rhomin) # deltarho*(dalphar/drho)|rhomin, where deltarho = rhomin-0
-alphar_int = ce_anti_isoT.y(rho_target) - ce_anti_isoT.y(rhomin) + alphar_correction
-print(alphar_int, LennardJones126.get_alphar_deriv(tau_integration, rho_target/rhoc,0,0) )
+    if prefix is None:
+        prefix=f'T_{T_target:0.6f}_D_{rho_target:0.6f}_'
 
-# --------------------
-#     ISOCHORE
-# --------------------
-isoD_cachefile = 'ce_isoD.json'
-# Load expansion or build it
-if not os.path.exists(isoD_cachefile) or force_build:
-    # Chebyshev expansion in dalphar/dT along the isochore; alphar-alphar(Tintegration,rho) = \int_{Tintegration}^{Ttarget} (dalphar/dT|rho) * dT
-    ce_isoD = ChebTools.generate_Chebyshev_expansion(20, lambda T: get_dalphardT(T, rho_target), T_integration, T_target)
-    with open('ce_isoD.json','w') as fp:
-        fp.write(json.dumps({
-            'coef': ce_isoD.coef().tolist(),
-            'xmin': T_integration,
-            'xmax': T_target,
-            'rho_integration': rho_target
-            }))
-# (Re)load from cache file
-j = json.load(open(isoD_cachefile))
-ce_isoD = ChebTools.ChebyshevExpansion(j['coef'], j['xmin'], j['xmax'])
-rho_target = j['rho_integration']
+    # Get some constants 
+    rhoc = LennardJones126.rhocstar
+    Tcstar = LennardJones126.Tcstar
+    tau = Tcstar/T_integration
+    tau_integration = tau
 
-ce_anti_isoD = ce_isoD.integrate(1) # Anti-derivative of dalphar/dT w.r.t. T gives alphar along the isochore
-# Array of temperatures to evaluate the properties
-Ts = np.linspace(T_integration, T_target)
-alphar = alphar_int + ce_anti_isoD.y(Ts)-ce_anti_isoD.y(T_integration)
-# dalphar_dT = ce_isoD.y(T_target)
-# print(alphar,'\n', LennardJones126.get_alphar_deriv(Tcstar/T_target, rho_target/rhoc,0,0))
-sex_kB = (-alphar-Ts*ce_isoD.y(Ts))
-print(Ts, sex_kB)
+    # --------------------
+    #     ISOTHERM 
+    # --------------------
+    rhomin = 0.01
+    isoT_cachefile = prefix+'ce_isoT.json'
+    # Load expansion or build it
+    if not os.path.exists(isoT_cachefile) or force_build:
+        # Chebyshev expansion in dalphar/drho along the isotherm; alphar=ar/T
+        ce_isoT = ChebTools.generate_Chebyshev_expansion(10, lambda rho: get_dalphardrho(T_integration, rho), rhomin, rho_target)
+        # Store as JSON
+        with open(isoT_cachefile,'w') as fp:
+            fp.write(json.dumps({
+                'coef': ce_isoT.coef().tolist(),
+                'xmin': rhomin,
+                'xmax': rho_target,
+                'T_integration': T_integration        
+                }))
+    # (Re)load from cache file
+    j = json.load(open(isoT_cachefile))
+    ce_isoT = ChebTools.ChebyshevExpansion(j['coef'], j['xmin'], j['xmax'])
+    T_integration = j['T_integration']
 
-print('my -sex/kB: ', sex_kB[-1])
-print('Thol -sex/kB: ', LennardJones126.LJ_sr_over_R(T_target, rho_target))
+    ce_anti_isoT = ce_isoT.integrate(1) # Anti-derivative of dalphar/drho
+    # Correct for the difference in residual Helmholtz energy between zero density and rhomin
+    alphar_correction = rhomin*ce_isoT.y(rhomin) # deltarho*(dalphar/drho)|rhomin, where deltarho = rhomin-0
+    alphar_int = ce_anti_isoT.y(rho_target) - ce_anti_isoT.y(rhomin) + alphar_correction
 
-df = pandas.DataFrame(s2vals)
-Ts = np.array(df['T'])
-alphar = alphar_int + ce_anti_isoD.y(Ts)-ce_anti_isoD.y(T_integration)
-sex_kB = (-alphar-Ts*ce_isoD.y(Ts))
-df['s^+'] = -sex_kB
-df.to_csv('s2vals.csv', index=False)
+    # --------------------
+    #     ISOCHORE
+    # --------------------
+    isoD_cachefile = prefix+'ce_isoD.json'
+    # Load expansion or build it
+    if not os.path.exists(isoD_cachefile) or force_build:
+        # Chebyshev expansion in dalphar/dT along the isochore; alphar-alphar(Tintegration,rho) = \int_{Tintegration}^{Ttarget} (dalphar/dT|rho) * dT
+        ce_isoD = ChebTools.generate_Chebyshev_expansion(500, lambda T: get_dalphardT(T, rho_target), T_integration, T_target)
+        with open(isoD_cachefile,'w') as fp:
+            fp.write(json.dumps({
+                'coef': ce_isoD.coef().tolist(),
+                'xmin': T_integration,
+                'xmax': T_target,
+                'rho_integration': rho_target
+                }))
+    # (Re)load from cache file
+    j = json.load(open(isoD_cachefile))
+    ce_isoD = ChebTools.ChebyshevExpansion(j['coef'], j['xmin'], j['xmax'])
+    rho_target = j['rho_integration']
 
-import matplotlib.pyplot as plt
-plt.plot(df['T'], df['s^+'], label=r'$s^+_{\rm total}$')
-plt.plot(df['T'], df['s^+_2'], label=r'$s^+_2$')
-plt.legend(loc='best')
-plt.savefig('splus_terms.pdf')
-plt.close()
+    ce_anti_isoD = ce_isoD.integrate(1) # Anti-derivative of dalphar/dT w.r.t. T gives alphar along the isochore
+    # Array of temperatures to evaluate the properties
+    Ts = np.linspace(T_integration, T_target)
+    alphar = alphar_int + ce_anti_isoD.y(Ts)-ce_anti_isoD.y(T_integration)
+    # dalphar_dT = ce_isoD.y(T_target)
+    # print(alphar,'\n', LennardJones126.get_alphar_deriv(Tcstar/T_target, rho_target/rhoc,0,0))
+    sex_kB = (-alphar-Ts*ce_isoD.y(Ts))
+    print(Ts, sex_kB)
+
+    print('my -sex/kB: ', -sex_kB[-1])
+    print('Thol -sex/kB: ', -LennardJones126.LJ_sr_over_R(T_target, rho_target))
+
+    df = pandas.DataFrame(s2vals)
+    if not df.empty:
+        Ts = np.array(df['T'])
+        alphar = alphar_int + ce_anti_isoD.y(Ts)-ce_anti_isoD.y(T_integration)
+        sex_kB = (-alphar-Ts*ce_isoD.y(Ts))
+        df['s^+'] = -sex_kB
+        df.to_csv(prefix+'s2vals.csv', index=False)
+
+        import matplotlib.pyplot as plt
+        plt.plot(df['T'], df['s^+'], label=r'$s^+_{\rm total}$')
+        plt.plot(df['T'], df['s^+_2'], label=r'$s^+_2$')
+        plt.legend(loc='best')
+        plt.savefig(prefix+'splus_terms.pdf')
+        plt.close()
+
+for rho in [0.7867]:
+    #one_integration(T_integration=2, T_target=400, rho_target=rho, get_dalphardrho=get_dalphardrho_TholLJ, get_dalphardT=get_dalphardT_TholLJ)
+    one_integration(T_integration=2, T_target=400, rho_target=rho, get_dalphardrho=get_dalphardrho_RUMD, get_dalphardT=get_dalphardT_RUMD)
