@@ -1,4 +1,4 @@
-import sys, os, subprocess
+import os, subprocess, gzip, glob
 import numpy as np
 import pandas
 
@@ -39,13 +39,57 @@ def generate_files(*, chain_length):
         fp.write(build_xyz(chain_length=chain_length))
 
     with open('rumd_init_conf_mol.stdout','w') as fp:
-        subprocess.check_call('rumd_init_conf_mol single_fene.xyz single_fene.top 100', shell=True, stdout=fp)
+        subprocess.check_call('rumd_init_conf_mol single_fene.xyz single_fene.top 250', shell=True, stdout=fp)
 
 ####### RUN SCRIPT ######
 
 import rumd
 from rumd.Simulation import Simulation
 from rumd.RunCompress import RunCompress
+
+def collate_energies(memory_max_Mb, **kwargs):
+    """
+    Collect the energies terms
+    """
+
+    def get_meta():
+        path = 'TrajectoryFiles/energies0000.dat.gz'
+        with gzip.open(path, 'rb') as fp:
+            line0 = fp.readlines()[0].decode('ascii')
+            meta = line0[1::].strip().split(' ')
+            o = {}
+            for thing in meta:
+                k, v = thing.split('=')
+                o[k] = v
+            return o
+
+    def get_one(filename, meta, coldrop=None, colkeep=None):
+        df = pandas.read_csv(filename, names = meta['columns']+['dummy'], comment='#', sep=r'\s+')
+        if coldrop is not None and colkeep is None:
+            df.drop(columns=coldrop, inplace=True)
+        elif coldrop is None and colkeep is not None:
+            df = df.filter(items=colkeep)        
+        blocktime = len(df)*meta['Dt']
+        I = int(os.path.split(filename)[1].split('.')[0].replace('energies',''))
+        df['t'] = meta['Dt']*np.arange(0, len(df)) + I*blocktime
+        return df
+
+    files = glob.glob('TrajectoryFiles/energies*.dat.gz')
+    meta = get_meta()
+    meta['columns'] = meta['columns'].split(',')
+    meta['Dt'] = float(meta['Dt'])
+    memory_Mb = 0
+    dfs = []
+    for i, filename in enumerate(files):
+        df = get_one(filename, meta, **kwargs)
+        memory_Mb += df.memory_usage(index=True).sum()/1024**2
+        if memory_Mb > memory_max_Mb:
+            raise MemoryError('Dataframe too large')
+        if i % 20 == 0:
+            print(i, '/', len(files), 'memory:', memory_Mb, 'Mb')
+        dfs.append(df)
+    df = pandas.concat(dfs,sort=False).sort_values(by='t')
+    return df  
 
 def run_one(*, bond_method, chain_length, Tstar, segment_density):
 
@@ -54,13 +98,13 @@ def run_one(*, bond_method, chain_length, Tstar, segment_density):
     # create simulation object
     sim = Simulation("start.xyz.gz", verbose=False)
 
-    BlockSize = 131072
+    BlockSize = 131072*16*4
     NoBlocks = 10
     sim.SetVerbose(False)
 
     sim.SetBlockSize(BlockSize)
     sim.SetOutputScheduling("trajectory", "logarithmic")
-    sim.SetOutputScheduling("energies", "linear", interval=128)
+    sim.SetOutputScheduling("energies", "linear", interval=16)
 
     sim.SetOutputMetaData(
         "energies",
@@ -73,12 +117,12 @@ def run_one(*, bond_method, chain_length, Tstar, segment_density):
     sim.ReadMoleculeData("start.top")
 
     # Create integrator object
-    itg = rumd.IntegratorNVT(targetTemperature=Tstar, timeStep=0.0025)
+    itg = rumd.IntegratorNVT(targetTemperature=Tstar, timeStep=0.00025)
     sim.SetIntegrator(itg)
 
     # Create potential object; potential is applied initially to all pairs of sites, both in the same chain and cross
     potential = rumd.Pot_LJ_12_6(cutoff_method=rumd.NoShift)
-    potential.SetParams(i=0, j=0, Epsilon=1.0, Sigma=1.0, Rcut=20)
+    potential.SetParams(i=0, j=0, Epsilon=1.0, Sigma=1.0, Rcut=3)
     sim.AddPotential(potential)
 
     cons_pot = None
@@ -93,9 +137,11 @@ def run_one(*, bond_method, chain_length, Tstar, segment_density):
     elif bond_method == 'Harmonic':
         # Harmonic bond
         pot_harm = rumd.BondHarmonic()
-        # N.B.: exclude=True means that the potential defined above will not be used for the bonded interaction, and only the harmonic bit will be
+        # N.B. #1: exclude=True means that the potential defined above will not be used for the bonded interaction, and only the harmonic bit will be
+        # N.B. #2: The difference between exclude=True and exclude=False should be very small because the center of the bond is at 
+        #          sigma=1, at which separation the potential has a value of zero
         stiffness = 3000.0
-        pot_harm.SetParams(bond_type=0, stiffness=stiffness, bond_length=1.0, exclude=True) # exclude seems to have no impact here...
+        pot_harm.SetParams(bond_type=0, stiffness=stiffness, bond_length=1.0, exclude=True)
         sim.AddPotential(pot_harm)
     elif bond_method == 'FENE':
         # Finite Extensible Nonlinear Elastic (FENE) potential between segments of chain
@@ -142,6 +188,18 @@ def run_one(*, bond_method, chain_length, Tstar, segment_density):
         Natoms = sim.GetNumberOfParticles() # Total number of atoms
         Ubonds_per_chain = Ubonds_per_bond*Nbonds/Natoms*chain_length
 
+    ########################  FLUCTUATION PROPERTIES ############################
+    # We (inefficiently) reload the data because for very, very long simulations 
+    # we don't have enough memory to load everything at once
+    Mb_max = 6000 # Max amount of memory usage allowed, in megabytes
+    df = collate_energies(Mb_max, colkeep=['pe', 'W'])
+    DeltaU = df.pe - df.pe.mean()
+    DeltaW = df.W  - df.W.mean()
+    R_Roskilde = np.mean(DeltaW*DeltaU)/(np.mean(DeltaU**2)*np.mean(DeltaW**2))**0.5
+    gamma_IPL = np.mean(DeltaW*DeltaU)/np.mean(DeltaU**2)
+    Nparticles = sim.GetNumberOfParticles()
+    cvexstar = np.mean(DeltaU**2)/Tstar**2*Nparticles # cv_ex^* = c_{v,ex}/k_B
+
     o = {
         'chain_length': chain_length,
         'Tstar': Tstar,
@@ -149,7 +207,10 @@ def run_one(*, bond_method, chain_length, Tstar, segment_density):
         'U/chain': U_per_particle*chain_length,
         'Ur/chain': U_per_particle*chain_length - Ubonds_per_chain,
         'W/chain': W_per_particle*chain_length,
-        'P': meanVals['p']
+        'P': meanVals['p'],
+        'gamma_IPL': gamma_IPL,
+        'R_Roskilde': R_Roskilde,
+        'cv_ex': cvexstar
     }
     print(o)
 
@@ -163,6 +224,8 @@ if __name__ == '__main__':
     # for bond_method in ['Harmonic']:#,'Constrained']:
     #     print('\n***Bond method:', bond_method)
     #     run_one(bond_method=bond_method, chain_length=12, Tstar=4, segment_density=0.5)
+
+    run_one(bond_method='Harmonic', chain_length=4, Tstar=100, segment_density=0.3777); quit()
 
     # Johnson 12-mer results
     o = []
