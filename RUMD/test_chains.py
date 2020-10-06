@@ -39,7 +39,7 @@ def generate_files(*, chain_length):
         fp.write(build_xyz(chain_length=chain_length))
 
     with open('rumd_init_conf_mol.stdout','w') as fp:
-        subprocess.check_call('rumd_init_conf_mol single_fene.xyz single_fene.top 250', shell=True, stdout=fp)
+        subprocess.check_call('rumd_init_conf_mol single_fene.xyz single_fene.top 500', shell=True, stdout=fp)
 
 ####### RUN SCRIPT ######
 
@@ -98,19 +98,20 @@ def run_one(*, bond_method, chain_length, Tstar, segment_density):
     # create simulation object
     sim = Simulation("start.xyz.gz", verbose=False)
 
-    BlockSize = 131072*16*4
+    BlockSize = 131072//2
     NoBlocks = 10
     sim.SetVerbose(False)
 
     sim.SetBlockSize(BlockSize)
     sim.SetOutputScheduling("trajectory", "logarithmic")
-    sim.SetOutputScheduling("energies", "linear", interval=16)
+    sim.SetOutputScheduling("energies", "linear", interval=4)
 
     sim.SetOutputMetaData(
         "energies",
         stress_xy=False, stress_xz=False, stress_yz=False,
         kineticEnergy=False, potentialEnergy=True, temperature=True,
-        totalEnergy=False, virial=True, pressure=True, volume=True
+        totalEnergy=False, virial=True, pressure=True, volume=True,
+        #potentialVirial=True, constraintVirial=True
     )
 
     # Read topology file
@@ -137,9 +138,9 @@ def run_one(*, bond_method, chain_length, Tstar, segment_density):
     elif bond_method == 'Harmonic':
         # Harmonic bond
         pot_harm = rumd.BondHarmonic()
-        # N.B. #1: exclude=True means that the potential defined above will not be used for the bonded interaction, and only the harmonic bit will be
-        # N.B. #2: The difference between exclude=True and exclude=False should be very small because the center of the bond is at 
-        #          sigma=1, at which separation the potential has a value of zero
+        # N.B. 1: exclude=True means that the potential defined above will not be used for the bonded interaction, and only the harmonic bit will be
+        # N.B. 2: The difference between exclude=True and exclude=False should be very small because the center of the bond is at 
+        #         sigma=1, at which separation the potential has a value of zero
         stiffness = 3000.0
         pot_harm.SetParams(bond_type=0, stiffness=stiffness, bond_length=1.0, exclude=True)
         sim.AddPotential(pot_harm)
@@ -169,15 +170,22 @@ def run_one(*, bond_method, chain_length, Tstar, segment_density):
     rs = rumd.Tools.rumd_stats()
     rs.ComputeStats()
     meanVals = rs.GetMeanVals()
+    # rs.WriteStats()
+    rs.PrintStats()
 
     # Store the outputs
     U_per_particle = meanVals['pe']
     W_per_particle = meanVals['W']
+    p = meanVals['p']
+    
+    Z = p/((segment_density/chain_length)*Tstar)
+    W_per_NmolkBT = Z-1
+    W_per_chain = W_per_NmolkBT*Tstar
 
     # Calculate an approximate value for the potential energy coming from the bonds
     Ubonds_per_chain = 0.0
     if bond_method == 'Harmonic':
-        subprocess.check_call('rumd_bonds -n 10000 -t start.top', shell=True)
+        subprocess.check_call('rumd_bonds -n 1000 -t start.top', shell=True)
         df = pandas.read_csv('bonds.dat', sep=' ', comment='#', names = ['length','count','dummy'])
         del df['dummy']
         # df.info()
@@ -206,7 +214,8 @@ def run_one(*, bond_method, chain_length, Tstar, segment_density):
         'segment_density': segment_density,
         'U/chain': U_per_particle*chain_length,
         'Ur/chain': U_per_particle*chain_length - Ubonds_per_chain,
-        'W/chain': W_per_particle*chain_length,
+        'W/chain': W_per_chain,
+        'W/chain #2': (p/(segment_density*Tstar)-1)*Tstar,
         'P': meanVals['p'],
         'gamma_IPL': gamma_IPL,
         'R_Roskilde': R_Roskilde,
@@ -216,7 +225,8 @@ def run_one(*, bond_method, chain_length, Tstar, segment_density):
 
     print('U/chain:', o['U/chain'])
     print('Ur/chain:', o['Ur/chain'])
-    print('W/chain:', o['W/chain'])
+    print('W/chain:', W_per_chain, "(Note: seeming bug in RUMD for calculation of W for chains)")
+    print('dalphar/drho_chain:', (o['W/chain']/o['segment_density']*chain_length*Tstar))
     print('P', o['P'])
     return o
 
@@ -225,7 +235,24 @@ if __name__ == '__main__':
     #     print('\n***Bond method:', bond_method)
     #     run_one(bond_method=bond_method, chain_length=12, Tstar=4, segment_density=0.5)
 
-    run_one(bond_method='Harmonic', chain_length=4, Tstar=100, segment_density=0.3777); quit()
+    from therm_integration import one_integration
+    segment_density = 0.2901
+    Tstar = 8
+    chain_length = 4
+    chain_density = segment_density/chain_length
+
+    # (W/Nmol)/(kB*T) = rho_chain*dalphar/drho_chain
+    get_dalphardrho = lambda T, rho_chain: run_one(bond_method='Harmonic', chain_length=chain_length, Tstar=T, segment_density=rho_chain*chain_length)['W/chain']/(rho_chain*T)
+    # (U/Nmol)/(kB*T) = -T*dalphar/dT
+    get_dalphardT = lambda T, rho_chain: run_one(bond_method='Harmonic', chain_length=chain_length, Tstar=T, segment_density=rho_chain*chain_length)['Ur/chain']/(-T**2)
+    one_integration(T_integration=Tstar, T_target=Tstar, rho_target=chain_density, get_dalphardrho=get_dalphardrho, get_dalphardT=get_dalphardT)
+
+    o = []
+    for segment_density in [0.3]:
+        for Tstar in np.geomspace(3, 50, 30):
+            o.append(run_one(bond_method='Harmonic', chain_length=4, Tstar=Tstar, segment_density=segment_density))
+    pandas.DataFrame(o).to_csv('gamma_chains.csv', index=False)
+    quit()
 
     # Johnson 12-mer results
     o = []

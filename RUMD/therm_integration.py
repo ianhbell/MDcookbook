@@ -13,6 +13,18 @@ import scipy.integrate
 # Convenience functions that would be replaced by outputs from simulation
 
 """
+
+Definitions
+-----------
+
+alphar = Ar/(Nmolecule*kB*T)
+
+which is identical to 
+
+alphar = Ar/(Nseg*kB*T)
+
+for molecular fluids
+
 RUMD outputs W/N and U/N
 
 Virial energy
@@ -28,24 +40,42 @@ Z-1 = rho*dalphar/drho
 
 and thus
 
-rho*dalphar/drho = (W/N)/(k_B*T)
+(Nmol/V)*dalphar/drho = (W/Nmol)/(k_B*T)
 
 Internal energy
 ---------------
 
 Similarly for internal energy
 
-ur/(N*kB*T) = -T*dalphar/dT
+Ur/(Nmol*kB*T) = -T*dalphar/dT
 
-the U/N of RUMD is the same thing as ur/N from EOS, so
+the U/Nseg of RUMD is the same thing as ur/N from EOS, so
 
-(U/N)/(kB*T) = -T*dalphar/dT
+(U/Nmol)/(kB*T) = -T*dalphar/dT
+
+It is also the case that the excess entropy is defined by:
+
+Ar = Ur - TSr
+
+or 
+
+Ar/(Nchain*kB*T) = Ur/(Nchain*kB*T) - T*Sr/(Nchain*kB*T)
+
+or
+
+s^+ = - T*Sr/(Nchain*kB*T) = Ar/(Nchain*kB*T) - Ur/(Nchain*kB*T)
+
+so if both residual internal energy (from U/N of simulation) and residual 
+Helmholtz energy (from integration along isotherm) are known, then the residual
+entropy is known.
 
 """
 
 # Calculate values from the EOS, for checking of method
 def get_dalphardrho_TholLJ(T, rho):
-    return LennardJones126.get_alphar_deriv(LennardJones126.Tcstar/T, rho/LennardJones126.rhocstar, 0, 1)/rho
+    # Ar01 = delta*(dalphar_ddelta) = rho*(dalphar/drho)
+    Ar01 = LennardJones126.get_alphar_deriv(LennardJones126.Tcstar/T, rho/LennardJones126.rhocstar, 0, 1)
+    return Ar01/rho
 def get_dalphardT_TholLJ(T, rho):
     return -LennardJones126.get_alphar_deriv(LennardJones126.Tcstar/T, rho/LennardJones126.rhocstar, 1, 0)/T
 
@@ -144,6 +174,7 @@ class RUMDSimulation():
         rs.ComputeStats()
         meanVals = rs.GetMeanVals()
         print(meanVals)
+        # rs.PrintStats()
 
         sim.sample.TerminateOutputManagers()
 
@@ -166,6 +197,7 @@ def get_dalphardrho_RUMD(T, rho):
     # Do a simulation, get dalphar/drho|T = (W/N)/(k_B*T)/rho; RUMD returns W/N
     sim = RUMDSimulation(Tstar=T, rhostar=rho)
     val = sim.W_over_N/T/rho
+    urNkBT = sim.U_over_N/T
     print('T,rho,val:', T, rho, val)#, 'dalphar/drho values', val, LennardJones126.get_alphar_deriv(Tcstar/T, rho/rhoc, 0, 1)/rho)
     print('p^*:', LennardJones126.LJ_p(T, rho))
     return val
@@ -204,24 +236,42 @@ def one_integration(T_integration, T_target, rho_target, *, get_dalphardrho, get
     # Load expansion or build it
     if not os.path.exists(isoT_cachefile) or force_build:
         # Chebyshev expansion in dalphar/drho along the isotherm; alphar=ar/T
-        ce_isoT = ChebTools.generate_Chebyshev_expansion(10, lambda rho: get_dalphardrho(T_integration, rho), rhomin, rho_target)
+        ce_isoT = ChebTools.generate_Chebyshev_expansion(20, lambda rho: get_dalphardrho(T_integration, rho), rhomin, rho_target)
         # Store as JSON
         with open(isoT_cachefile,'w') as fp:
             fp.write(json.dumps({
                 'coef': ce_isoT.coef().tolist(),
                 'xmin': rhomin,
                 'xmax': rho_target,
-                'T_integration': T_integration        
+                'T_integration': T_integration
                 }))
     # (Re)load from cache file
     j = json.load(open(isoT_cachefile))
     ce_isoT = ChebTools.ChebyshevExpansion(j['coef'], j['xmin'], j['xmax'])
+    rhomin = j['xmin']
+    rho_target = j['xmax']
     T_integration = j['T_integration']
 
     ce_anti_isoT = ce_isoT.integrate(1) # Anti-derivative of dalphar/drho
     # Correct for the difference in residual Helmholtz energy between zero density and rhomin
     alphar_correction = rhomin*ce_isoT.y(rhomin) # deltarho*(dalphar/drho)|rhomin, where deltarho = rhomin-0
     alphar_int = ce_anti_isoT.y(rho_target) - ce_anti_isoT.y(rhomin) + alphar_correction
+
+    # Calculate residual entropy at intersection of isotherm and isochore
+    # -T*Sr = Ar - Ur
+    # so
+    # s^+ = -Sr/(Nmol*k) = Ar/(Nmol*k*T) - Ur/(Nmol*k*T)
+    Ar_per_NmolkBT = alphar_int
+    Ur_per_NmolkBT = -T_integration*get_dalphardT(T_integration, rho_target) # alphar is per molecule
+    splus = Ar_per_NmolkBT - Ur_per_NmolkBT
+    print('='*30)
+    print('At intersection of T and rho, s^+:', splus, 's^+ for L-J from Thol', -LennardJones126.LJ_sr_over_R(T_integration, rho_target))
+    print('Ur/Nmol', Ur_per_NmolkBT*T_integration)
+    print('Ur/(Nmol*kB*T)', Ur_per_NmolkBT, LennardJones126.LJ_ur_over_kBT(T_integration, rho_target))
+    print('Ar/Nmol:', Ar_per_NmolkBT*T_integration)
+    print('Ar/(Nmol*kB*T):', Ar_per_NmolkBT, LennardJones126.LJ_ar_over_kBT(T_integration, rho_target))
+    print('='*30)
+    quit()
 
     # --------------------
     #     ISOCHORE
@@ -230,7 +280,7 @@ def one_integration(T_integration, T_target, rho_target, *, get_dalphardrho, get
     # Load expansion or build it
     if not os.path.exists(isoD_cachefile) or force_build:
         # Chebyshev expansion in dalphar/dT along the isochore; alphar-alphar(Tintegration,rho) = \int_{Tintegration}^{Ttarget} (dalphar/dT|rho) * dT
-        ce_isoD = ChebTools.generate_Chebyshev_expansion(500, lambda T: get_dalphardT(T, rho_target), T_integration, T_target)
+        ce_isoD = ChebTools.generate_Chebyshev_expansion(50, lambda T: get_dalphardT(T, rho_target), T_integration, T_target)
         with open(isoD_cachefile,'w') as fp:
             fp.write(json.dumps({
                 'coef': ce_isoD.coef().tolist(),
@@ -252,8 +302,8 @@ def one_integration(T_integration, T_target, rho_target, *, get_dalphardrho, get
     sex_kB = (-alphar-Ts*ce_isoD.y(Ts))
     print(Ts, sex_kB)
 
-    print('my -sex/kB: ', -sex_kB[-1])
-    print('Thol -sex/kB: ', -LennardJones126.LJ_sr_over_R(T_target, rho_target))
+    print('my s^+: ', -sex_kB[-1])
+    print('Thol s^+: ', -LennardJones126.LJ_sr_over_R(T_target, rho_target))
 
     df = pandas.DataFrame(s2vals)
     if not df.empty:
@@ -270,6 +320,7 @@ def one_integration(T_integration, T_target, rho_target, *, get_dalphardrho, get
         plt.savefig(prefix+'splus_terms.pdf')
         plt.close()
 
-for rho in [0.7867]:
-    #one_integration(T_integration=2, T_target=400, rho_target=rho, get_dalphardrho=get_dalphardrho_TholLJ, get_dalphardT=get_dalphardT_TholLJ)
-    one_integration(T_integration=2, T_target=400, rho_target=rho, get_dalphardrho=get_dalphardrho_RUMD, get_dalphardT=get_dalphardT_RUMD)
+if __name__ == '__main__':
+    for rho in [0.3812]:
+        # one_integration(T_integration=2, T_target=400, rho_target=rho, get_dalphardrho=get_dalphardrho_TholLJ, get_dalphardT=get_dalphardT_TholLJ)
+        one_integration(T_integration=2, T_target=400, rho_target=rho, get_dalphardrho=get_dalphardrho_RUMD, get_dalphardT=get_dalphardT_RUMD)
