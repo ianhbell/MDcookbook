@@ -38,6 +38,8 @@ reset_timestep 0
 
 write_data chain_equil.data
 
+compute contrib all pe/mol/tally all
+
 # Define some variables that will make them available as outputs for dumping/calculation
 # See some variables here: https://lammps.sandia.gov/doc/thermo_style.html
 variable     Temp equal temp
@@ -48,11 +50,13 @@ variable     Natoms equal atoms
 variable     Volume equal vol
 variable     BondEnergy equal ebond
 variable     vdWEnergy equal evdwl
+variable     vdWIntra equal c_contrib[1]
+variable     vdWInter equal c_contrib[3]
 
 variable     Nevery equal 1 # Interval between samples in a block (timesteps)
 variable     Nrepeat equal 5 # Samples per block output
 variable     Nfreq equal ${Nevery}*${Nrepeat} # Overall output interval (timesteps)
-fix          OUTPUT all ave/time ${Nevery} ${Nrepeat} ${Nfreq} v_Time v_Temp v_pe v_Press v_Natoms v_Volume v_BondEnergy v_vdWEnergy file out.dump
+fix          OUTPUT all ave/time ${Nevery} ${Nrepeat} ${Nfreq} v_Time v_Temp v_pe v_Press v_Natoms v_Volume v_BondEnergy v_vdWEnergy v_vdWIntra v_vdWInter file out.dump
 
 # Also print some debugging things as we go
 thermo_style custom step time temp density press pe ebond evdwl etail

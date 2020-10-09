@@ -20,7 +20,7 @@ RUN yum -y update && \
 ENV PATH="${PATH}:/usr/lib64/openmpi/bin/"
 
 # ARG PACKAGES="asphere body class2 colloid compress coreshell dipole granular kspace manybody mc misc molecule opt peri qeq replica rigid shock snap srd user-reaxc"
-ARG PACKAGES="opt molecule"
+ARG PACKAGES="opt molecule user-tally "
 ARG BUILD="mpi"
 ARG LMP_INCLUDES="-DLAMMPS_EXCEPTIONS -DLAMMPS_GZIP -DLAMMPS_MEMALIGN=64"
 
@@ -41,6 +41,8 @@ RUN for pack in $PACKAGES; do make "yes-$pack"; done && \
    mkdir /usr/local/include/lammps && \
    cp *.h /usr/local/include/lammps
 
+RUN python3 -m pip install pandas
+
 # Copy over the script
 COPY in.fene /
 COPY *.lammps / 
@@ -53,7 +55,6 @@ RUN gfortran -o chain chain.f && cp chain /
 # Copy over the scripts
 COPY chain_builder.py go.py /
 
-RUN python3 -m pip install pandas
 
 # The task to run
 WORKDIR /
