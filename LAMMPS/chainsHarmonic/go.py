@@ -17,7 +17,7 @@ def run_one(*, Tstar, segment_density, chain_length):
     # print(open('chain_equil.data').read())
 
     # Do an equilibrium run from the de-overlapped configuration
-    subprocess.check_call(f'mpirun -np {Nproc} --allow-run-as-root lammps -sf opt -in in.fene -var segment_density {segment_density} -var Tstar {Tstar}',shell=True)
+    subprocess.check_call(f'mpirun -np {Nproc} --allow-run-as-root lammps -sf opt -in do_run.lammps -var segment_density {segment_density} -var Tstar {Tstar}',shell=True)
     # print(open('out.dump').read())
 
     # Copy it into the output folder if that folder exists
@@ -31,6 +31,7 @@ def run_one(*, Tstar, segment_density, chain_length):
     #     print(col, df[col].mean())
 
     return {
+        'chain_length': chain_length,
         'T': df['v_Temp'].mean(),
         'p': df['v_Press'].mean(),
         'rho_seg': df['v_Natoms'].mean()/df['v_Volume'].mean(),
