@@ -35,9 +35,9 @@ variable  dt equal 0.0025
 variable  Tstar equal 3.0
 velocity  all create ${Tstar} 103486 mom yes rot yes dist gaussian 
 variable  timeconstant equal 100*${dt} # Recommendation from LAMMPS docs
-timestep	${dt}
+timestep  ${dt}/100
 fix       NVT all nvt temp ${Tstar} ${Tstar} ${timeconstant} drag 0.2
-run       1500  # How many steps for the eq. run
+run       15000  # How many steps for the eq. run
 
 # Reset for the production calculation
 reset_timestep 0
