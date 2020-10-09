@@ -43,10 +43,8 @@ RUN for pack in $PACKAGES; do make "yes-$pack"; done && \
 
 RUN python3 -m pip install pandas
 
-# Copy over the script
-COPY in.fene /
-COPY *.lammps / 
-COPY data.fene /old.fene
+# Copy over the run scripts
+COPY do_*.lammps / 
 
 # Build the chain-building executable
 WORKDIR /lammps/tools
@@ -54,7 +52,6 @@ RUN gfortran -o chain chain.f && cp chain /
 
 # Copy over the scripts
 COPY chain_builder.py go.py /
-
 
 # The task to run
 WORKDIR /
