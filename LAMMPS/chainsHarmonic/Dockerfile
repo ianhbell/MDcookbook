@@ -12,7 +12,9 @@ MAINTAINER Ian Bell "ian.bell@nist.gov"
 RUN yum -y update && \
     yum -y install  wget ssh zlib-devel \
                     make gcc gcc-c++ \
-                    openmpi-devel openblas-devel fftw3-devel git nano python3 \
+                    openmpi-devel openblas-devel fftw3-devel \
+                    git nano python3 \
+    && \
     yum -y clean all
 
 ENV PATH="${PATH}:/usr/lib64/openmpi/bin/"
@@ -41,7 +43,7 @@ RUN for pack in $PACKAGES; do make "yes-$pack"; done && \
 
 # Copy over the script
 COPY in.fene /
-
+COPY *.lammps / 
 COPY data.fene /old.fene
 
 # Build the chain-building executable
@@ -50,6 +52,8 @@ RUN gfortran -o chain chain.f && cp chain /
 
 # Copy over the scripts
 COPY chain_builder.py go.py /
+
+RUN python3 -m pip install pandas
 
 # The task to run
 WORKDIR /

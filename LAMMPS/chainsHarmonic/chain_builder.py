@@ -14,8 +14,10 @@ template = r"""Polymer chain definition
 
 import subprocess, io
 
-def build_chain(*, segment_density, Nchains, chain_length, ofname):
+def build_chain(*, segment_density, Nchains, chain_length, ofname, verbose=False):
     definition = template.format(Nchains=Nchains, chain_length=chain_length, segment_density=segment_density).encode('ascii')
+    if verbose:
+        print(definition.decode())
     
     from subprocess import Popen, PIPE, STDOUT
     p = Popen(['/chain'], stdout=PIPE, stdin=PIPE, stderr=STDOUT, shell=True)
