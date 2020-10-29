@@ -10,7 +10,7 @@ def run_one(*, Tstar, segment_density, chain_length):
     import chain_builder as cb; cb.build_chain(segment_density=segment_density, Nchains=320, chain_length=chain_length, ofname='data.fene', verbose=True)
     # print(open('data.fene').read())
 
-    Nproc = 4
+    Nproc = 12
 
     # Relax the chain to remove overlapping segments
     subprocess.check_call(f'mpirun -np {Nproc} --allow-run-as-root lammps -sf opt -in do_chain.lammps -var Tstar {Tstar}',shell=True)
@@ -44,7 +44,20 @@ if __name__ == '__main__':
     assert(os.path.exists('/out'))
     # with open('/out/something','w') as fp:
     #     fp.write('hihi')
+
     outputs = []
-    for segment_density in [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]:
-        outputs.append(run_one(Tstar=4.0, chain_length=8, segment_density=segment_density))
-    pandas.DataFrame(outputs).to_csv('/out/chains.csv', index=False)
+    for segment_density in [0.001]:
+        for Tstar in [2.05,3.00,4.00,6.00,8.00,10.00,50.00,100.00]:
+            try:
+                outputs.append(run_one(Tstar=Tstar, chain_length=3, segment_density=segment_density))
+            except:
+                pass
+    pandas.DataFrame(outputs).to_csv('/out/chains3_isolated.csv', index=False)
+
+#    outputs = []
+#    for segment_density in [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]:
+#        try:
+#            outputs.append(run_one(Tstar=10.0, chain_length=3, segment_density=segment_density))
+#        except:
+#            pass
+#    pandas.DataFrame(outputs).to_csv('/out/chains3_T4.csv', index=False)

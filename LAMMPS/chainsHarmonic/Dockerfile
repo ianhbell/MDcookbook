@@ -5,14 +5,14 @@
 #
 # These images don't work: ubuntu:18.04 ; nvidia/cuda:10.1-devel ; debian:buster
 
-# CentOS 7 + CUDA stuff for ultimate use with GPU acceleration
-FROM nvidia/cuda:10.1-devel-centos7
+# CentOS 8 + CUDA stuff for ultimate use with GPU acceleration
+FROM nvidia/cuda:11.0-devel-centos8
 MAINTAINER Ian Bell "ian.bell@nist.gov"
 
 RUN yum -y update && \
-    yum -y install  wget ssh zlib-devel \
+    yum -y install  wget zlib-devel \
                     make gcc gcc-c++ \
-                    openmpi-devel openblas-devel fftw3-devel \
+                    openmpi-devel fftw3-devel \
                     git nano python3 \
     && \
     yum -y clean all
