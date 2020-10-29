@@ -1,0 +1,11 @@
+version: '3.2'
+
+services:
+  lammps:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    volumes:
+      - type: bind
+        source: ./
+        target: /out
