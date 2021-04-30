@@ -102,7 +102,8 @@ def calc_s2kB(folder):
     for part in parts:
         k, v = part.split('=', 1)
         meta[k] = v
-    assert(int(meta['numTypes'])==1)
+    print(meta)
+    # assert(int(meta['numTypes'])==1)
     L, W, H = [float(_) for _ in meta['sim_box'].split(',')[1:4]]
     V = L*W*H
     rho = N/V
@@ -110,8 +111,9 @@ def calc_s2kB(folder):
     molefrac = {'A': 1.0}
 
     # For multicomponent mixtures, add back determination of mole fractions of each component
-    # for component, n in zip(['A','B'], results['num_par']):
-    #     molefrac[component] = n/N
+    if int(meta['numTypes']) > 1:
+        for component, n in zip(['A','B'], meta['num_par']):
+            molefrac[component] = n/N
 
     rdf = rdf[rdf.r < L/2.0]
 
@@ -131,8 +133,77 @@ def calc_s2kB(folder):
         summer += x0*x1*scipy.integrate.trapz(x=rdf.r, y=integrand)
     return -2*np.pi*rho*summer
 
-class RUMDSimulation():
-    def __init__(self, *, Tstar, rhostar, Rcut=10):
+class RUMDLJmixSimulation():
+    def __init__(self, *, Tstar, rhostar, Rcut=5, numA, numB, massA, massB, epsilonA, epsilonB, sigmaA, sigmaB):
+        import rumd
+        from rumd.Simulation import Simulation
+
+        masses = [massA,massB]
+        num_par = [numA,numB]
+        mass_str = ' --mass={mass:s}'.format(mass=','.join([str(m) for m in masses]))
+        num_par_str = ','.join([str(n) for n in num_par])
+
+        # Generate the starting state in the file start.xyz.gz
+        subprocess.check_call('rumd_init_conf -q --num_par='+num_par_str+' --cells=15,15,15 --rho='+str(rhostar) + mass_str, shell=True)
+
+        # Create simulation object
+        sim = Simulation("start.xyz.gz", pb=16, tp=8, verbose=False)
+
+        # Be quiet...
+        sim.SetVerbose(False)
+
+        sim.SetOutputScheduling("trajectory", "logarithmic")
+        sim.SetOutputScheduling("energies", "linear", interval=8)
+
+        sim.SetOutputMetaData(
+        "energies",
+        stress_xy=False, stress_xz=False, stress_yz=False,
+        kineticEnergy=False, potentialEnergy=True, temperature=True,
+        totalEnergy=False, virial=True, pressure=True, volume=False)
+
+        # Create potential object. 
+        pot = rumd.Pot_LJ_12_6(cutoff_method=rumd.ShiftedPotential)
+        pot.SetParams(i=0, j=0, Sigma=sigmaA, Epsilon=epsilonA, Rcut=Rcut)
+        pot.SetParams(i=0, j=1, Sigma=(sigmaA+sigmaB)/2, Epsilon=(epsilonA*epsilonB)**0.5, Rcut=Rcut)
+        pot.SetParams(i=1, j=1, Sigma=sigmaB, Epsilon=epsilonB, Rcut=Rcut)
+        sim.SetPotential(pot)
+
+        # Create integrator object
+        itg = rumd.IntegratorNVT(timeStep=0.00025, targetTemperature=Tstar)
+        itg.SetRelaxationTime(0.2)
+        sim.SetIntegrator(itg)
+
+        n_equil_steps = 100000
+        n_run_steps = 10000
+        sim.Run(n_equil_steps, suppressAllOutput=True)
+        sim.Run(n_run_steps)
+
+        # Create a rumd_stats object
+        rs = rumd.Tools.rumd_stats()
+        rs.ComputeStats()
+        meanVals = rs.GetMeanVals()
+        # print(meanVals)
+        # rs.PrintStats()
+
+        sim.sample.TerminateOutputManagers()
+
+        # Store the outputs
+        self.U_over_N = meanVals['pe']
+        self.W_over_N = meanVals['W']
+
+        # Calculate s_2
+        rdf_obj = rumd.Tools.rumd_rdf()
+        # Constructor arguments: number of bins and minimum time
+        rdf_obj.ComputeAll(1000, 1.0)
+        # Include the state point information in the rdf file name
+        rdf_obj.WriteRDF("rdf.dat")
+
+        # s^+_2 = -s_2/k_B
+        # self.splus2 = -calc_s2kB(os.path.abspath(os.path.dirname(__file__)))
+        # print('s^+_2', self.splus2)
+
+class RUMDMonomerSimulation():
+    def __init__(self, *, potential, pot_params, Tstar, rhostar, Rcut=10):
         import rumd
         from rumd.Simulation import Simulation
 
@@ -155,9 +226,16 @@ class RUMDSimulation():
         totalEnergy=False, virial=True, pressure=True, volume=False)
 
         # Create potential object. 
-        pot = rumd.Pot_LJ_12_6(cutoff_method=rumd.ShiftedPotential)
-        pot.SetParams(i=0, j=0, Sigma=1.0, Epsilon=1.0, Rcut=Rcut)
-        sim.SetPotential(pot)
+        if potential == 'LJ12-6':
+            pot = rumd.Pot_LJ_12_6(cutoff_method=rumd.ShiftedPotential)
+            pot.SetParams(i=0, j=0, Sigma=1.0, Epsilon=1.0, Rcut=Rcut)
+            sim.SetPotential(pot)
+        elif potential == 'EXP6':
+            pot = rumd.Pot_Buckingham(cutoff_method=rumd.ShiftedPotential)
+            pot.SetParams(i=0, j=0, **pot_params)
+            sim.SetPotential(pot)
+        else:
+            raise KeyError("invalid potential name")
 
         # Create integrator object
         itg = rumd.IntegratorNVT(timeStep=0.00025, targetTemperature=Tstar)
@@ -193,27 +271,60 @@ class RUMDSimulation():
         self.splus2 = -calc_s2kB(os.path.abspath(os.path.dirname(__file__)))
         print('s^+_2', self.splus2)
 
-def get_dalphardrho_RUMD(T, rho):
-    # Do a simulation, get dalphar/drho|T = (W/N)/(k_B*T)/rho; RUMD returns W/N
-    sim = RUMDSimulation(Tstar=T, rhostar=rho)
-    val = sim.W_over_N/T/rho
-    urNkBT = sim.U_over_N/T
-    print('T,rho,val:', T, rho, val)#, 'dalphar/drho values', val, LennardJones126.get_alphar_deriv(Tcstar/T, rho/rhoc, 0, 1)/rho)
-    print('p^*:', LennardJones126.LJ_p(T, rho))
-    return val
+class RUMDCacher():
+    def __init__(self, *, sim_class, sim_kwargs = {}):
+        self.isoTvals = []
+        self.isoDvals = []
+        self.sim_class = sim_class
+        self.sim_kwargs = sim_kwargs
 
-s2vals = []
-def get_dalphardT_RUMD(T, rho):
-    # Do a simulation, get dalphar/dT|rho = -(U/N)/(kB*T^2); RUMD returns U/N
-    sim = RUMDSimulation(Tstar=T, rhostar=rho)
-    val = -sim.U_over_N/T**2
-    print('T,rho,val:', T, rho, val)
-    s2vals.append({
-        'T': T, 
-        'rho': rho,
-        's^+_2': sim.splus2
-        })
-    return val
+    def get_dalphardrho_RUMD(self, T, rho):
+        # Do a simulation, get dalphar/drho|T = (W/N)/(k_B*T)/rho; RUMD returns W/N
+        sim = self.sim_class(Tstar=T, rhostar=rho, **self.sim_kwargs)
+        val = sim.W_over_N/T/rho
+        urNkBT = sim.U_over_N/T
+        vals = {
+            'T': T,
+            'rho': rho,
+            'U/N': sim.U_over_N,
+            'W/N': sim.W_over_N,
+            # 's^+_2': sim.splus2,
+            'dalphar/dT|rho': -sim.U_over_N/T**2,
+            'dalphar/drho|T': sim.W_over_N/T/rho,
+        }    
+        print(vals)
+        self.isoTvals.append(vals)
+        return val
+    
+    def get_dalphardT_RUMD(self, T, rho):
+        # Do a simulation, get dalphar/dT|rho = -(U/N)/(kB*T^2); RUMD returns U/N
+        sim = self.sim_class(Tstar=T, rhostar=rho, **self.sim_kwargs)
+        val = -sim.U_over_N/T**2
+        vals = {
+            'T': T, 
+            'rho': rho,
+            'U/N': sim.U_over_N,
+            'W/N': sim.W_over_N,
+            # 's^+_2': sim.splus2,
+            'dalphar/dT|rho': -sim.U_over_N/T**2,
+            'dalphar/drho|T': sim.W_over_N/T/rho
+        }
+        self.isoDvals.append(vals)
+        return val
+
+    def dump_isoT(self, T_integration, *, rho_min, rho_target, prefix=''):
+
+        # Chebyshev expansion in dalphar/drho along the isotherm; alphar=ar/T
+        ce_isoT = ChebTools.generate_Chebyshev_expansion(40, lambda rho: self.get_dalphardrho_RUMD(T_integration, rho), rho_min, rho_target)
+
+        ce_anti_isoT = ce_isoT.integrate(1) # Anti-derivative of dalphar/drho
+        # Correct for the difference in residual Helmholtz energy between zero density and rho_min
+        alphar_correction = rho_min*ce_isoT.y(rho_min) # deltarho*(dalphar/drho)|rho_min, where deltarho = rho_min-0
+
+        dff = pandas.DataFrame(self.isoTvals)
+        dff['alphar'] = ce_anti_isoT.y(dff['rho']) - ce_anti_isoT.y(rho_min) + alphar_correction
+        dff['s^+'] = dff['alphar'] + T_integration*dff['dalphar/dT|rho'] # s^+ = alphar - tau*(dalphar/dtau)_delta
+        dff.to_csv(f'{prefix:s}T_{T_integration}_LJisotherm.csv', index=False)
 
 force_build = True
 
@@ -231,31 +342,31 @@ def one_integration(T_integration, T_target, rho_target, *, get_dalphardrho, get
     # --------------------
     #     ISOTHERM 
     # --------------------
-    rhomin = 0.01
+    rho_min = 0.01
     isoT_cachefile = prefix+'ce_isoT.json'
     # Load expansion or build it
     if not os.path.exists(isoT_cachefile) or force_build:
         # Chebyshev expansion in dalphar/drho along the isotherm; alphar=ar/T
-        ce_isoT = ChebTools.generate_Chebyshev_expansion(20, lambda rho: get_dalphardrho(T_integration, rho), rhomin, rho_target)
+        ce_isoT = ChebTools.generate_Chebyshev_expansion(20, lambda rho: get_dalphardrho(T_integration, rho), rho_min, rho_target)
         # Store as JSON
         with open(isoT_cachefile,'w') as fp:
             fp.write(json.dumps({
                 'coef': ce_isoT.coef().tolist(),
-                'xmin': rhomin,
+                'xmin': rho_min,
                 'xmax': rho_target,
                 'T_integration': T_integration
                 }))
     # (Re)load from cache file
     j = json.load(open(isoT_cachefile))
     ce_isoT = ChebTools.ChebyshevExpansion(j['coef'], j['xmin'], j['xmax'])
-    rhomin = j['xmin']
+    rho_min = j['xmin']
     rho_target = j['xmax']
     T_integration = j['T_integration']
 
     ce_anti_isoT = ce_isoT.integrate(1) # Anti-derivative of dalphar/drho
-    # Correct for the difference in residual Helmholtz energy between zero density and rhomin
-    alphar_correction = rhomin*ce_isoT.y(rhomin) # deltarho*(dalphar/drho)|rhomin, where deltarho = rhomin-0
-    alphar_int = ce_anti_isoT.y(rho_target) - ce_anti_isoT.y(rhomin) + alphar_correction
+    # Correct for the difference in residual Helmholtz energy between zero density and rho_min
+    alphar_correction = rho_min*ce_isoT.y(rho_min) # deltarho*(dalphar/drho)|rho_min, where deltarho = rho_min-0
+    alphar_int = ce_anti_isoT.y(rho_target) - ce_anti_isoT.y(rho_min) + alphar_correction
 
     # Calculate residual entropy at intersection of isotherm and isochore
     # -T*Sr = Ar - Ur
@@ -271,7 +382,8 @@ def one_integration(T_integration, T_target, rho_target, *, get_dalphardrho, get
     print('Ar/Nmol:', Ar_per_NmolkBT*T_integration)
     print('Ar/(Nmol*kB*T):', Ar_per_NmolkBT, LennardJones126.LJ_ar_over_kBT(T_integration, rho_target))
     print('='*30)
-    quit()
+    
+    return {'s^+': splus, 'T^*': T_integration, 'rho': rho_target}
 
     # --------------------
     #     ISOCHORE
@@ -305,7 +417,8 @@ def one_integration(T_integration, T_target, rho_target, *, get_dalphardrho, get
     print('my s^+: ', -sex_kB[-1])
     print('Thol s^+: ', -LennardJones126.LJ_sr_over_R(T_target, rho_target))
 
-    df = pandas.DataFrame(s2vals)
+    df = pandas.DataFrame('')
+#    df = pandas.DataFrame(s2vals)
     if not df.empty:
         Ts = np.array(df['T'])
         alphar = alphar_int + ce_anti_isoD.y(Ts)-ce_anti_isoD.y(T_integration)
@@ -320,7 +433,38 @@ def one_integration(T_integration, T_target, rho_target, *, get_dalphardrho, get
         plt.savefig(prefix+'splus_terms.pdf')
         plt.close()
 
+import uuid
+
+def do_LJmix():
+    assert(os.path.exists('LJmix'))
+    massA = 1
+    epsilonA = 1.0
+    sigmaA = 1.0
+    for massB in [1]:
+        for epsilonB in [1,2,4]:
+            for sigmaB in [1,2,4]:
+                for numA in [1, 256, 512, 512+256, 1023]:
+                    numB = 1024 - numA
+                    sim_kwargs = dict(
+                        massA=massA, massB=massB, 
+                        epsilonA=epsilonA, epsilonB=epsilonB, 
+                        numA=numA, numB=numB,
+                        sigmaA=sigmaA, sigmaB=sigmaB
+                    )
+                    uid = str(uuid.uuid1())
+                    with open('LJmix/'+uid+'.json','w') as fp:
+                        fp.write(json.dumps(sim_kwargs))
+                    cacher = RUMDCacher(sim_class=RUMDLJmixSimulation, sim_kwargs=sim_kwargs)
+                    cacher.dump_isoT(10, rho_min = 0.01, rho_target=1, prefix='LJmix/'+uid+'_')
+
 if __name__ == '__main__':
-    for rho in [0.3812]:
-        # one_integration(T_integration=2, T_target=400, rho_target=rho, get_dalphardrho=get_dalphardrho_TholLJ, get_dalphardT=get_dalphardT_TholLJ)
-        one_integration(T_integration=2, T_target=400, rho_target=rho, get_dalphardrho=get_dalphardrho_RUMD, get_dalphardT=get_dalphardT_RUMD)
+
+    pot_params = {'Epsilon': 1}
+    cacher = RUMDCacher(sim_class=RUMDMonomerSimulation, sim_kwargs={'potential': 'LJ12-6',"pot_params": pot_params})
+    cacher.dump_isoT(3, rho_min = 0.01, rho_target=1, prefix='LJ126')
+
+    pot_params = dict(Alpha=14, rm=1.00, Epsilon=1.00, Rcut=5.5)
+    cacher = RUMDCacher(sim_class=RUMDMonomerSimulation, sim_kwargs={'potential': 'EXP6',"pot_params": pot_params})
+    cacher.dump_isoT(3, rho_min = 0.01, rho_target=1, prefix='EXP6')
+    cacher.dump_isoT(4, rho_min = 0.01, rho_target=1, prefix='EXP6')
+    cacher.dump_isoT(8, rho_min = 0.01, rho_target=1, prefix='EXP6')
