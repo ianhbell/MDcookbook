@@ -83,3 +83,12 @@ nvidia-smi -c 1
 SLURM
 
 https://ubuntuforums.org/showthread.php?t=2404746
+
+
+Headless upgrade and incompatible nvidia drivers:
+
+https://askubuntu.com/a/551947:
+
+sudo apt-get autoremove --purge nvidia-*
+sudo service lightdm stop
+sudo apt-get install xserver-xorg-video-nouveaux
