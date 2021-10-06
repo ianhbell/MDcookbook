@@ -89,7 +89,7 @@ SLURM
 https://ubuntuforums.org/showthread.php?t=2404746
 
 
-Headless upgrade and incompatible nvidia drivers (see https://askubuntu.com/a/551947)
+Headless upgrade and incompatible nvidia drivers (see https://askubuntu.com/a/551947). Start with a Ctrl+Alt+F1 to get a shell, login, then:
 ```
 sudo apt-get autoremove --purge nvidia-*
 sudo service lightdm stop
