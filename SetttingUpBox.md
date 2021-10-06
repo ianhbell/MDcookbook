@@ -1,5 +1,9 @@
 
-Download the correct driver from http://www.nvidia.com/Download/index.aspx, save to host computer.  Run it:
+Download the correct driver from http://www.nvidia.com/Download/index.aspx, save to host computer.  Can use 
+```
+ubuntu-drivers devices
+```
+to determine the model number. After download, run it:
 ```
 sudo bash NVIDIA-Linux-x86_64-450.66.run
 nvidia-smi
@@ -12,7 +16,7 @@ sudo ubuntu-drivers autoinstall
 sudo reboot
 ```
 
-Confirm that you get something useful from nvidia-smi on the host
+Confirm that you get something useful from ``nvidia-smi`` on the host
 ```
 ian@XXX:~/Code/XXX$ nvidia-smi
 Wed Sep 25 10:14:25 2019
@@ -85,10 +89,9 @@ SLURM
 https://ubuntuforums.org/showthread.php?t=2404746
 
 
-Headless upgrade and incompatible nvidia drivers:
-
-https://askubuntu.com/a/551947:
-
+Headless upgrade and incompatible nvidia drivers (see https://askubuntu.com/a/551947)
+```
 sudo apt-get autoremove --purge nvidia-*
 sudo service lightdm stop
 sudo apt-get install xserver-xorg-video-nouveaux
+```
