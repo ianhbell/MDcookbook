@@ -1,18 +1,9 @@
-
-Download the correct driver from http://www.nvidia.com/Download/index.aspx, save to host computer.  Can use 
+Remove all nvidia drivers (see https://askubuntu.com/a/1004649) and re-install. Start with a Ctrl+Alt+F1 to get a shell if needed, do a root login, then:
 ```
-ubuntu-drivers devices
-```
-to determine the model number. After download, run it:
-```
-sudo bash NVIDIA-Linux-x86_64-450.66.run
-nvidia-smi
-```
-
-Install the driver for nvidia directly from Ubuntu 18.04 (https://linuxconfig.org/how-to-install-the-nvidia-drivers-on-ubuntu-18-04-bionic-beaver-linux)
-```
-ubuntu-drivers devices
-sudo ubuntu-drivers autoinstall
+sudo apt-get remove --purge nvidia-*
+sudo rm /etc/X11/xorg.conf
+sudo rm /etc/modprobe.d/blacklist-nouveau.conf
+sudo update-initramfs -k all -u
 sudo reboot
 ```
 
@@ -42,7 +33,33 @@ Wed Sep 25 10:14:25 2019
 
 ```
 
-Add the runtime to docker (https://github.com/nvidia/nvidia-container-runtime#systemd-drop-in-file)
+Add the NVIDIA container runtime to docker (see https://github.com/NVIDIA/nvidia-docker/issues/1243#issuecomment-928064024)
+```
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
+curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+
+sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+sudo systemctl restart docker
+```
+Might need another ``sudo systemctl restart docker``
+
+Test with:
+```docker-compose
+services:
+  test:
+    image: nvidia/cuda:10.2-base
+    command: nvidia-smi
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+```
+
+<OBSOLETE> Add the runtime to docker (https://github.com/nvidia/nvidia-container-runtime#systemd-drop-in-file)
 ``` 
 sudo mkdir -p /etc/systemd/system/docker.service.d
 sudo tee /etc/systemd/system/docker.service.d/override.conf <<EOF
@@ -77,6 +94,23 @@ Wed Sep 25 16:15:28 2019
 |=============================================================================|
 +-----------------------------------------------------------------------------+
 ```
+Download the correct driver from http://www.nvidia.com/Download/index.aspx, save to host computer.  Can use 
+```
+ubuntu-drivers devices
+```
+to determine the model number. After download, run it:
+```
+sudo bash NVIDIA-Linux-x86_64-450.66.run
+nvidia-smi
+```
+
+Install the driver for nvidia directly from Ubuntu 18.04 (https://linuxconfig.org/how-to-install-the-nvidia-drivers-on-ubuntu-18-04-bionic-beaver-linux)
+```
+ubuntu-drivers devices
+sudo ubuntu-drivers autoinstall
+sudo reboot
+```
+</OBSOLETE>
 
 
 On the host, make GPU cards exclusive per process
@@ -89,9 +123,3 @@ SLURM
 https://ubuntuforums.org/showthread.php?t=2404746
 
 
-Headless upgrade and incompatible nvidia drivers (see https://askubuntu.com/a/551947). Start with a Ctrl+Alt+F1 to get a shell, login, then:
-```
-sudo apt-get autoremove --purge nvidia-*
-sudo service lightdm stop
-sudo apt-get install xserver-xorg-video-nouveaux
-```
